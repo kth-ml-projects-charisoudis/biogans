@@ -47,7 +47,7 @@ class GDriveCapsule(FilesystemCapsule):
                                           if a new token was generated
         :param (str) project_root: relative path to folder considered as root for the project
         """
-        self.logger = CommandLineLogger(log_level=os.getenv('TRAIN_LOG_LEVEL', 'info'), name=self.__class__.__name__)
+        self.logger = CommandLineLogger(log_level=os.getenv('LOG_LEVEL', 'info'), name=self.__class__.__name__)
         self.local_root = f'{local_gdrive_root}{project_root}'.rstrip('/')
         self.client_secrets_filepath = f'{self.local_root}/client_secrets.json'
         self.update_credentials = update_credentials
@@ -826,13 +826,12 @@ class GDriveFilesystem(Filesystem):
 
 
 if __name__ == '__main__':
-    GDRIVE_WHICH = 'personal'  # 'personal', 'auth'
-    _gd_suffix = '_personal' if GDRIVE_WHICH == 'personal' else ''
-    _gc = GDriveCapsule(local_gdrive_root=f'/home/achariso/PycharmProjects/gans-thesis/.gdrive{_gd_suffix}',
-                        use_refresh_token=True, update_credentials=True)
+    _gc = GDriveCapsule(
+        local_gdrive_root=f'/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.gdrive_personal',
+        use_refresh_token=True, update_credentials=True)
     _gfs = GDriveFilesystem(gcapsule=_gc)
-    _gf = GDriveFolder.root(_gfs, update_cache=True, cloud_root='12IiDRSnj6r7Jd66Yxz3ZZTn9EFW-Qnqu')
-    _gfm = _gf.subfolder_by_name('Models', recursive=False) \
-        .subfolder_by_name_or_create('model_name=stylegan_karras', recursive=False) \
+    _gf = GDriveFolder.root(_gfs, update_cache=True, cloud_root='1f7LxjJJTirrFbQBMrknZ0RYTbB66wmO3')
+    _gfm = _gf.subfolder_by_name_or_create('Models', recursive=False) \
+        .subfolder_by_name_or_create('model_name=biogan', recursive=False) \
         .subfolder_by_name_or_create('Configurations', recursive=False)
-    _gfm.upload_file(local_filename='karrasB_z512.yaml', show_progress=True)
+    _gf.upload_file(local_filename='client_secrets.json', show_progress=True)

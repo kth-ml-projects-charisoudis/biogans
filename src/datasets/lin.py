@@ -47,7 +47,7 @@ class LINDataset(Dataset, GDriveDataset):
                                zip_filename='LIN_Normalized_WT_size-48-80.zip')
         self.root = dataset_fs_folder.local_root
         # Initialize instance properties
-        self.logger = CommandLineLogger(log_level=os.getenv('TRAIN_LOG_LEVEL', 'info'), name=self.__class__.__name__)
+        self.logger = CommandLineLogger(log_level=os.getenv('LOG_LEVEL', 'info'), name=self.__class__.__name__)
         self.train_img_dir_path = self.subfolders[1].local_root
         self.test_img_dir_path = self.subfolders[0].local_root
         # Check that the dataset is present at the local filesystem
