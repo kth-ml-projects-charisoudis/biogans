@@ -248,16 +248,33 @@ class LINScraper:
             json.dump(polarity_factors_info, json_fp, indent=4)
 
     @staticmethod
-    def _compute_L2_dists(query_img, nn_imgs, channel_index: int = 0):
-        assert (query_img.shape == nn_imgs.shape[1:])
+    def _compute_L2_dists(query_img: Tensor, nn_imgs: Tensor, channel_index: int = 0) -> Tensor:
+        """
+        Modified version of the one presented in paper's repo.
+        Source of original: https://github.com/aosokin/biogans
+        :param Tensor query_img: query image, of shape (C, H, W)
+        :param Tensor nn_imgs: to-search images mini batch, of shape (B, C, H, W)
+        :param channel_index: the index of the image channel based on which comparison will take place
+        :return: a torch.Tensor object containing the L2 distances between query image and all images, of shape (B,)
+        """
+        assert query_img.shape == nn_imgs.shape[1:]
         query_img = query_img[channel_index].view(1, -1)
         nn_imgs = nn_imgs[:, channel_index, :, :].view(nn_imgs.shape[0], -1)
         return torch.sum((nn_imgs - query_img) ** 2, dim=1)
 
     @staticmethod
-    def _find_neighbors_in_batch(img, nn_imgs, img_paths, k: int = 5):
+    def _find_neighbors_in_batch(img: Tensor, nn_imgs: Tensor, img_paths: list, k: int = 5) -> Tuple[list, Tensor]:
+        """
+        Modified version of the one presented in paper's repo.
+        Source of original: https://github.com/aosokin/biogans
+        :param Tensor img: query image, of shape (C, H, W)
+        :param Tensor nn_imgs: to-search images mini batch, of shape (B, C, H, W)
+        :param list img_paths: image paths corresponding to the mini batch images
+        :param int k: number of nearest neighbors to keep
+        :return: a tuple containing the subset of image paths, the corresponding L2 distances
+        """
         # compute the L2 distances
-        dists = LINScraper._compute_L2_dists(img, nn_imgs)
+        dists = LINScraper._compute_L2_dists(query_img=img, nn_imgs=nn_imgs)
         # sort in the order of increasing distance
         dists_sorted, indices = torch.sort(dists, dim=0, descending=False)
         indices = indices.cpu()
@@ -308,11 +325,13 @@ class LINScraper:
         return based_on_final, list1_final[:len(list1)], list2_final[:len(list2)]
 
     @staticmethod
-    def nearest_neighbors(dataset_gfolder: FilesystemFolder, k: int = 5):
+    def nearest_neighbors(dataset_gfolder: FilesystemFolder, k: int = 5) -> None:
         """
-        :param dataset_gfolder:
-        :param k:
-        :return:
+        For every image in the dataset find its k-NNs based on the red channel. For all the images in a polarity factor
+        directory, create a `nearest_neighbors_info.json` and save it inside the directory.
+        :param (FilesystemFolder) dataset_gfolder: a `utils.ifaces.FilesystemFolder` object to download / use
+                                                   dataset from local or remote (Google Drive) filesystem
+        :param int k: number of nearest neighbors to keep (defaults to 5 - incl. self)
         """
         logger = CommandLineLogger(log_level=os.getenv('LOG_LEVEL', 'info'), name=LINDataset.__name__)
         query_dataloaders = {k: LINDataloader(dataset_gfolder, train_not_test=True, logger=logger, which_classes=k,
@@ -327,6 +346,13 @@ class LINScraper:
         for query_dir, query_dataloader in query_dataloaders.items():
 
             nearest_neighbors_info_path = os.path.join(query_dataloader.dataset.root, 'nearest_neighbors_info.json')
+            if os.path.exists(nearest_neighbors_info_path):
+                with open(nearest_neighbors_info_path) as json_fp:
+                    _nearest_neighbors_info = json.load(json_fp)
+                if _nearest_neighbors_info['path'] == query_dir and \
+                        _nearest_neighbors_info['_searched_classes'] == searched_classes and \
+                        _nearest_neighbors_info['_k'] == k:
+                    continue
             nearest_neighbors_info = {
                 "_path": query_dir,
                 "_searched_classes": searched_classes,
