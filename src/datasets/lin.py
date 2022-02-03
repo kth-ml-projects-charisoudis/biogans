@@ -384,7 +384,7 @@ class LINNearestNeighborsScraper:
             return based_on_final, list1_final[:len(list1)]
         return based_on_final, list1_final[:len(list1)], list2_final[:len(list2)]
 
-    def nearest_neighbors(self, k: int = 5) -> None:
+    def forward(self, k: int = 5) -> None:
         """
         For every image in the dataset find its k-NNs based on the red channel. For all the images in a polarity factor
         directory, create a `nearest_neighbors_info.json` and save it inside the directory.
@@ -456,18 +456,34 @@ class LINNearestNeighborsScraper:
                 json.dump(nearest_neighbors_info, json_fp, indent=4)
             self.logger.info(f'[DONE] {query_dir} (saved at: {nearest_neighbors_info_path})')
 
+    def backward(self):
+        pass
+
     @staticmethod
-    def run(local_gdrive_root: str, k: int = 5) -> None:
+    def run(local_gdrive_root: str, k: int = 5, forward_pass: bool = True, backward_pass: bool = True) -> None:
         """
         Entry point of class.
         :param str local_gdrive_root: absolute path to local Google Drive mount point
         :param int k: number of NNs
+        :param forward_pass: set to True to run scraper's forward pass (create polarity_factor_info.json files in
+                             polarity factors dirs)
+        :param backward_pass: set to True to run scraper's backward pass (recursively merge polarity factors JSON files)
+                              Note: if :attr:`forward_pass` is set to True, then :attr:`backward_pass` will be True.
         """
-        for _which_search in ['train', 'test']:
-            nn_scraper = LINNearestNeighborsScraper(local_gdrive_root, which_search=_which_search)
-            nn_scraper.logger.info(f'[START] which_search={_which_search}')
-            nn_scraper.nearest_neighbors(k=k)
-            nn_scraper.logger.info(f'[DONE] which_search={_which_search}')
+        nn_scraper_train = LINNearestNeighborsScraper(local_gdrive_root, which_search='train')
+        nn_scraper_test = LINNearestNeighborsScraper(local_gdrive_root, which_search='test')
+        if forward_pass:
+            for _which_search in ['train', 'test']:
+                nn_scraper = nn_scraper_train if _which_search == 'train' else nn_scraper_test
+                nn_scraper.logger.info(f'[forward] STARTING which_search={_which_search}')
+                nn_scraper.forward(k=k)
+                nn_scraper.logger.info(f'[forward] DONE')
+            backward_pass = True
+        if backward_pass:
+            nn_scraper_train.logger.info('[backward] STARTING')
+            nn_scraper_train.backward()
+            nn_scraper_train.logger.info('[backward] DONE')
+        nn_scraper_train.logger.info('DONE')
 
 
 if __name__ == '__main__':
@@ -477,7 +493,6 @@ if __name__ == '__main__':
         LINScraper.run(forward_pass=True, backward_pass=True)
         # Scrape nearest neighbors of each image in the training set
         LINNearestNeighborsScraper.run(_local_gdrive_root, k=5)
-    exit(0)
 
     # Via locally-mounted Google Drive (when running from inside Google Colaboratory)
     _capsule = LocalCapsule(_local_gdrive_root)
