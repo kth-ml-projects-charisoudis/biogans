@@ -325,14 +325,14 @@ class LINNearestNeighborsScraper:
         fs = LocalFilesystem(ccapsule=capsule)
         dataset_gfolder = LocalFolder.root(capsule_or_fs=fs).subfolder_by_name('Datasets')
         self.query_dataloaders = {k: LINDataloader(dataset_gfolder, train_not_test=True, logger=self.logger,
-                                                   which_classes=k, batch_size=1, pin_memory=True)
+                                                   which_classes=k, batch_size=20, pin_memory=True)
                                   for k in LINDataset.Classes}
         # searched_classes = [k for k in LINDataset.Classes if k.startswith('A')]
         self.searched_classes = LINDataset.Classes
         self.nn_dl_bs = 50
         self.nn_dataloaders = {k: LINDataloader(dataset_gfolder, train_not_test=which_search == 'train',
                                                 logger=self.logger, which_classes=k, batch_size=self.nn_dl_bs,
-                                                pin_memory=True, num_workers=0)
+                                                pin_memory=True, num_workers=4)
                                for k in self.searched_classes}
         self.which_search = which_search
         self.dataset_gfolder: FilesystemFolder = dataset_gfolder
@@ -440,62 +440,66 @@ class LINNearestNeighborsScraper:
                 "_k": k
             }
             pbar = tqdm(query_dataloader)
-            for query_img, query_img_path in pbar:
-                query_img = query_img.cuda().squeeze()
-                query_img_path = query_img_path[0]
+            for query_img_batch, query_img_path_batch in pbar:
+                query_img_batch = query_img_batch.cuda()
+                for bi in query_img_batch.shape[0]:
+                    query_img = query_img_batch[bi].squeeze()
+                    query_img_path = query_img_path_batch[bi]
 
-                nearest_neighbors_info[query_img_path] = {}
-                nearest_neighbors_info[query_img_path]['_one_per_class'] = {
-                    "dists": [],
-                    "img_paths": [],
-                }
-
-                nn_dists_final_final = None
-                nn_img_paths_final_final = None
-                for nn_dir, nn_dataloader in self.nn_dataloaders.items():
-                    if nn_dir == query_dir:
-                        continue
-                    nn_dists_final = None
-                    nn_img_paths_final = None
-                    for nn_bi, (nn_imgs, nn_img_paths) in enumerate(nn_dataloader):
-                        pbar.set_description(f'{query_img_path.strip("/")} | ' +
-                                             f'{self.which_search}/{os.path.basename(nn_dataloader.dataset.root)}: ' +
-                                             f'{nn_bi}/{len(nn_dataloader)}')
-                        if nn_bi == len(nn_dataloader) - 1 and nn_imgs.shape[0] != self.nn_dl_bs:
-                            # FIX: repeat data when fewer than the batch size
-                            times = math.ceil(float(self.nn_dl_bs) / float(nn_imgs.shape[0]))
-                            nn_imgs = torch.cat(times * [nn_imgs, ])[:self.nn_dl_bs]
-                            nn_img_paths = (times * nn_img_paths)[:self.nn_dl_bs]
-                        nnb_img_paths, nnb_dists = LINNearestNeighborsScraper._find_neighbors_in_batch(
-                            img=query_img,
-                            nn_imgs=nn_imgs.cuda(),
-                            img_paths=nn_img_paths,
-                            k=k
-                        )
-                        nn_dists_final, nn_img_paths_final = LINNearestNeighborsScraper._merge_lists(
-                            based_on=nnb_dists.cpu().numpy(),
-                            based_on_vs=nn_dists_final,
-                            list1=nnb_img_paths,
-                            list1_vs=nn_img_paths_final
-                        )
-                        nn_dists_final_final, nn_img_paths_final_final = LINNearestNeighborsScraper._merge_lists(
-                            based_on=nnb_dists.cpu().numpy(),
-                            based_on_vs=nn_dists_final_final,
-                            list1=nnb_img_paths,
-                            list1_vs=nn_img_paths_final_final
-                        )
-                    nearest_neighbors_info[query_img_path][f'{nn_dir}'] = {
-                        "dists": nn_dists_final.tolist(),
-                        "img_paths": nn_img_paths_final,
+                    nearest_neighbors_info[query_img_path] = {}
+                    nearest_neighbors_info[query_img_path]['_one_per_class'] = {
+                        "dists": [],
+                        "img_paths": [],
                     }
-                    # noinspection PyUnresolvedReferences
-                    nearest_neighbors_info[query_img_path]['_one_per_class']['dists'].append(nn_dists_final.tolist()[0])
-                    # noinspection PyUnresolvedReferences
-                    nearest_neighbors_info[query_img_path]['_one_per_class']['img_paths'].append(nn_img_paths_final[0])
-                nearest_neighbors_info[query_img_path][f'_all'] = {
-                    "dists": nn_dists_final_final.tolist(),
-                    "img_paths": nn_img_paths_final_final,
-                }
+
+                    nn_dists_final_final = None
+                    nn_img_paths_final_final = None
+                    for nn_dir, nn_dataloader in self.nn_dataloaders.items():
+                        if nn_dir == query_dir:
+                            continue
+                        nn_dists_final = None
+                        nn_img_paths_final = None
+                        for nn_bi, (nn_imgs, nn_img_paths) in enumerate(nn_dataloader):
+                            pbar.set_description(f'{query_img_path.strip("/")} | ' +
+                                                 f'{self.which_search}/{os.path.basename(nn_dataloader.dataset.root)}: ' +
+                                                 f'{nn_bi}/{len(nn_dataloader)}')
+                            if nn_bi == len(nn_dataloader) - 1 and nn_imgs.shape[0] != self.nn_dl_bs:
+                                # FIX: repeat data when fewer than the batch size
+                                times = math.ceil(float(self.nn_dl_bs) / float(nn_imgs.shape[0]))
+                                nn_imgs = torch.cat(times * [nn_imgs, ])[:self.nn_dl_bs]
+                                nn_img_paths = (times * nn_img_paths)[:self.nn_dl_bs]
+                            nnb_img_paths, nnb_dists = LINNearestNeighborsScraper._find_neighbors_in_batch(
+                                img=query_img,
+                                nn_imgs=nn_imgs.cuda(),
+                                img_paths=nn_img_paths,
+                                k=k
+                            )
+                            nn_dists_final, nn_img_paths_final = LINNearestNeighborsScraper._merge_lists(
+                                based_on=nnb_dists.cpu().numpy(),
+                                based_on_vs=nn_dists_final,
+                                list1=nnb_img_paths,
+                                list1_vs=nn_img_paths_final
+                            )
+                            nn_dists_final_final, nn_img_paths_final_final = LINNearestNeighborsScraper._merge_lists(
+                                based_on=nnb_dists.cpu().numpy(),
+                                based_on_vs=nn_dists_final_final,
+                                list1=nnb_img_paths,
+                                list1_vs=nn_img_paths_final_final
+                            )
+                        nearest_neighbors_info[query_img_path][f'{nn_dir}'] = {
+                            "dists": nn_dists_final.tolist(),
+                            "img_paths": nn_img_paths_final,
+                        }
+                        # noinspection PyUnresolvedReferences
+                        nearest_neighbors_info[query_img_path]['_one_per_class']['dists'].append(
+                            nn_dists_final.tolist()[0])
+                        # noinspection PyUnresolvedReferences
+                        nearest_neighbors_info[query_img_path]['_one_per_class']['img_paths'].append(
+                            nn_img_paths_final[0])
+                    nearest_neighbors_info[query_img_path][f'_all'] = {
+                        "dists": nn_dists_final_final.tolist(),
+                        "img_paths": nn_img_paths_final_final,
+                    }
             # Save json in each directory
             with open(nearest_neighbors_info_path, 'w') as json_fp:
                 json.dump(nearest_neighbors_info, json_fp, indent=4, sort_keys=True)
