@@ -176,7 +176,7 @@ class LINDataloader(DataLoader):
 
     def __init__(self, dataset_fs_folder_or_root: FilesystemFolder, image_transforms: Optional[Compose] = None,
                  train_not_test: bool = True, which_classes: str = 'all', logger: Optional[CommandLineLogger] = None,
-                 **dl_kwargs):
+                 dataset: Optional[LINDataset] = None, **dl_kwargs):
         """
         LINDataloader class constructor.
         :param (FilesystemFolder) dataset_fs_folder_or_root: a `utils.ifaces.FilesystemFolder` object to download / use
@@ -191,8 +191,9 @@ class LINDataloader(DataLoader):
                                    `polarity_factor_info.json` is not present inside dataset's (local) root
         """
         # Instantiate dataset
-        dataset = LINDataset(dataset_fs_folder_or_root=dataset_fs_folder_or_root, image_transforms=image_transforms,
-                             train_not_test=train_not_test, which_classes=which_classes, logger=logger)
+        if dataset is None:
+            dataset = LINDataset(dataset_fs_folder_or_root=dataset_fs_folder_or_root, image_transforms=image_transforms,
+                                 train_not_test=train_not_test, which_classes=which_classes, logger=logger)
         # Instantiate dataloader
         super(LINDataloader, self).__init__(dataset=dataset, **dl_kwargs)
 
@@ -324,12 +325,12 @@ class LINNearestNeighborsScraper:
         capsule = LocalCapsule(local_gdrive_root)
         fs = LocalFilesystem(ccapsule=capsule)
         dataset_gfolder = LocalFolder.root(capsule_or_fs=fs).subfolder_by_name('Datasets')
+        self.nn_dl_bs = 50
+        self.searched_classes = LINDataset.Classes
         self.query_dataloaders = {k: LINDataloader(dataset_gfolder, train_not_test=True, logger=self.logger,
                                                    which_classes=k, batch_size=20, pin_memory=True)
-                                  for k in LINDataset.Classes}
+                                  for k in self.searched_classes}
         # searched_classes = [k for k in LINDataset.Classes if k.startswith('A')]
-        self.searched_classes = LINDataset.Classes
-        self.nn_dl_bs = 50
         self.nn_dataloaders = {k: LINDataloader(dataset_gfolder, train_not_test=which_search == 'train',
                                                 logger=self.logger, which_classes=k, batch_size=self.nn_dl_bs,
                                                 pin_memory=True, num_workers=4)
@@ -442,7 +443,7 @@ class LINNearestNeighborsScraper:
             pbar = tqdm(query_dataloader)
             for query_img_batch, query_img_path_batch in pbar:
                 query_img_batch = query_img_batch.cuda()
-                for bi in query_img_batch.shape[0]:
+                for bi in range(query_img_batch.shape[0]):
                     query_img = query_img_batch[bi].squeeze()
                     query_img_path = query_img_path_batch[bi]
 
