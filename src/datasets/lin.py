@@ -70,8 +70,6 @@ class LINDataset(Dataset, GDriveDataset):
         # Initialize instance properties
         self.logger = logger if logger is not None else \
             CommandLineLogger(log_level=os.getenv('LOG_LEVEL', 'info'), name=self.__class__.__name__)
-        self.train_img_dir_path = self.subfolders[1].local_root
-        self.test_img_dir_path = self.subfolders[0].local_root
         # Check that the dataset is present at the local filesystem
         if not self.is_fetched_and_unzipped():
             if click.confirm(f'Dataset is not fetched and unzipped. Would you like to fetch now?', default=True):
@@ -79,6 +77,9 @@ class LINDataset(Dataset, GDriveDataset):
             else:
                 raise FileNotFoundError(f'Dataset not found in local filesystem (tried {self.root})')
         # Load images info file
+        self.train_img_dir_path = self.dataset_gfolder \
+            .subfolder_by_name('LIN_Normalized_WT_size-48-80_train').local_root
+        self.test_img_dir_path = self.dataset_gfolder.subfolder_by_name('LIN_Normalized_WT_size-48-80_test').local_root
         self.img_dir_path = getattr(self, f'{"train" if train_not_test else "test"}_img_dir_path')
         assert os.path.exists(self.img_dir_path) and os.path.isdir(self.img_dir_path)
         if which_classes in ['all', '6class']:
@@ -88,6 +89,11 @@ class LINDataset(Dataset, GDriveDataset):
         else:
             self.root = os.path.join(self.img_dir_path, which_classes)
             self.polarity_factors_info_path = os.path.join(self.root, f'polarity_factor_info.json')
+        if not os.path.exists(self.polarity_factors_info_path):
+            if click.confirm(f'Dataset is not scraped. Would you like to scrape now?', default=True):
+                LINScraper.run(forward_pass=True, backward_pass=True)
+            else:
+                raise FileNotFoundError(f'Dataset is not scraped. polarity_factors_info.json could not be found.')
         with open(self.polarity_factors_info_path, 'r') as json_fp:
             self.polarity_factors_info = json.load(json_fp)
         # Assign dataset metadata
@@ -176,7 +182,7 @@ class LINDataloader(DataLoader):
 
     def __init__(self, dataset_fs_folder_or_root: FilesystemFolder, image_transforms: Optional[Compose] = None,
                  train_not_test: bool = True, which_classes: str = 'all', logger: Optional[CommandLineLogger] = None,
-                 dataset: Optional[LINDataset] = None, **dl_kwargs):
+                 **dl_kwargs):
         """
         LINDataloader class constructor.
         :param (FilesystemFolder) dataset_fs_folder_or_root: a `utils.ifaces.FilesystemFolder` object to download / use
@@ -191,9 +197,8 @@ class LINDataloader(DataLoader):
                                    `polarity_factor_info.json` is not present inside dataset's (local) root
         """
         # Instantiate dataset
-        if dataset is None:
-            dataset = LINDataset(dataset_fs_folder_or_root=dataset_fs_folder_or_root, image_transforms=image_transforms,
-                                 train_not_test=train_not_test, which_classes=which_classes, logger=logger)
+        dataset = LINDataset(dataset_fs_folder_or_root=dataset_fs_folder_or_root, image_transforms=image_transforms,
+                             train_not_test=train_not_test, which_classes=which_classes, logger=logger)
         # Instantiate dataloader
         super(LINDataloader, self).__init__(dataset=dataset, **dl_kwargs)
 
@@ -232,19 +237,20 @@ class LINScraper:
         """
         for polarity_dir in tqdm(self.polarity_dirs):
             polarity_dir_path = f'{self.img_dir_path}/{polarity_dir}'
-            images = os.listdir(polarity_dir_path)
-            images = sorted(
-                [_i for _i in images if _i.endswith('.png')],
-                key=lambda _i: int(_i.replace('cell', '').replace('.png', ''))
-            )
-            images_info = {
-                'polarity': polarity_dir,
-                'path': f'/{polarity_dir}',
-                'cell_images': images,
-                'cell_images_count': len(images),
-            }
-            with open(f'{polarity_dir_path}/polarity_factor_info.json', 'w') as json_fp:
-                json.dump(images_info, json_fp, indent=4)
+            if not os.path.exists(f'{polarity_dir_path}/polarity_factor_info.json'):
+                images = os.listdir(polarity_dir_path)
+                images = sorted(
+                    [_i for _i in images if _i.endswith('.png')],
+                    key=lambda _i: int(_i.replace('cell', '').replace('.png', ''))
+                )
+                images_info = {
+                    'polarity': polarity_dir,
+                    'path': f'/{polarity_dir}',
+                    'cell_images': images,
+                    'cell_images_count': len(images),
+                }
+                with open(f'{polarity_dir_path}/polarity_factor_info.json', 'w') as json_fp:
+                    json.dump(images_info, json_fp, indent=4)
             self.logger.debug(f'{polarity_dir_path}: [DONE]')
 
     def backward(self) -> None:
@@ -462,8 +468,8 @@ class LINNearestNeighborsScraper:
                         nn_img_paths_final = None
                         for nn_bi, (nn_imgs, nn_img_paths) in enumerate(nn_dataloader):
                             pbar.set_description(f'{query_img_path.strip("/")} | ' +
-                                                 f'{self.which_search}/{os.path.basename(nn_dataloader.dataset.root)}: ' +
-                                                 f'{nn_bi}/{len(nn_dataloader)}')
+                                                 f'{self.which_search}/{os.path.basename(nn_dataloader.dataset.root)}' +
+                                                 f': {nn_bi}/{len(nn_dataloader)}')
                             if nn_bi == len(nn_dataloader) - 1 and nn_imgs.shape[0] != self.nn_dl_bs:
                                 # FIX: repeat data when fewer than the batch size
                                 times = math.ceil(float(self.nn_dl_bs) / float(nn_imgs.shape[0]))
@@ -618,10 +624,11 @@ class LINNearestNeighborsScraper:
         Entry point of class.
         :param str local_gdrive_root: absolute path to local Google Drive mount point
         :param int k: number of NNs
-        :param forward_pass: set to True to run scraper's forward pass (create polarity_factor_info.json files in
+        :param bool forward_pass: set to True to run scraper's forward pass (create polarity_factor_info.json files in
                              polarity factors dirs)
-        :param backward_pass: set to True to run scraper's backward pass (recursively merge polarity factors JSON files)
-                              Note: if :attr:`forward_pass` is set to True, then :attr:`backward_pass` will be True.
+        :param bool backward_pass: set to True to run scraper's backward pass (recursively merge polarity factors JSON
+                                   files). Note: if :attr:`forward_pass` is set to True, then :attr:`backward_pass`
+                                   will be True.
         :param bool generate_images: set to True to generate multi-channel images consisting of each training images
                                      inside any of the 6 classes red channel + the original + 4 other green channels.
         """
@@ -630,7 +637,8 @@ class LINNearestNeighborsScraper:
         if forward_pass:
             for _which_search in ['train', 'test']:
                 nn_scraper = nn_scraper_train if _which_search == 'train' else nn_scraper_test
-                nn_scraper.clear()
+                # if click.confirm(f'Clear previous NN scrapes for "{_which_search}"?', default=True):
+                #     nn_scraper.clear()
                 nn_scraper.logger.info(f'[forward] STARTING which_search={_which_search}')
                 nn_scraper.forward(k=k)
                 nn_scraper.logger.info(f'[forward] DONE')
@@ -650,11 +658,14 @@ class LINNearestNeighborsScraper:
 
 if __name__ == '__main__':
     _local_gdrive_root = '/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.gdrive_personal'
-    if click.confirm('Do you want to (re)scrape the dataset now?', default=True):
-        # Scape images to create info files
-        LINScraper.run(forward_pass=True, backward_pass=True)
-        # Scrape nearest neighbors of each image in the training set
-        LINNearestNeighborsScraper.run(_local_gdrive_root, k=5)
+    # if click.confirm('Do you want to (re)scrape the dataset now?', default=True):
+    #     # Scape images to create info files
+    #     LINScraper.run(forward_pass=True, backward_pass=True)
+    #     # Scrape nearest neighbors of each image in the training set
+    #     LINNearestNeighborsScraper.run(_local_gdrive_root, k=5)
+    # torch.cuda.empty_cache()
+    LINNearestNeighborsScraper.run(_local_gdrive_root, k=5)
+    exit(0)
 
     # Via locally-mounted Google Drive (when running from inside Google Colaboratory)
     _capsule = LocalCapsule(_local_gdrive_root)

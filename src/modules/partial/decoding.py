@@ -14,31 +14,6 @@ class ExpandingBlock(nn.Module):
         c_in: the number of channels to expect from a given input
     """
 
-    STATE_DICT_REPLACE_DICT = {
-        '.expanding_block.0.': '.upscale.',
-        '.expanding_block.1.': '.expanding_block.0.',
-    }
-
-    @staticmethod
-    def fix_state_dict(state_dict: dict) -> dict:
-        """
-        Fix state dicts after recent update in layer naming
-        :param (dict) state_dict: old state dict
-        :return: a dict object with the updated keys
-        """
-        # Check if newer checkpoint
-        for key in list(state_dict.keys()):
-            if '.upscale.' in key:
-                return state_dict
-        # Fix older checkpoints
-        s_r_dict = ExpandingBlock.STATE_DICT_REPLACE_DICT
-        for key in list(state_dict.keys()):
-            for search_key in list(s_r_dict.keys()):
-                if search_key in key:
-                    state_dict[key.replace(search_key, s_r_dict[search_key])] = state_dict[key]
-                    del state_dict[key]
-        return state_dict
-
     def __init__(self, c_in: int, use_norm: bool = True, kernel_size: int = 3, activation: Optional[str] = 'relu',
                  output_padding: int = 1, stride: int = 2, padding: int = 1, c_out: Optional[int] = None,
                  norm_type: str = 'instance', use_dropout: bool = False, use_skip: bool = False):
@@ -108,62 +83,8 @@ class ExpandingBlock(nn.Module):
         # Append skip connection (if one exists)
         if self.use_skip:
             # Specify cat()'s dim to be 1 (aka channels), since we want a channel-wise concatenation of the two tensors
-            x = torch.cat([x, UNETExpandingBlock.crop_skip_connection(skip_conn_at_x, x.shape)], dim=1)
+            x = torch.cat([x, ExpandingBlock.crop_skip_connection(skip_conn_at_x, x.shape)], dim=1)
         return self.expanding_block(x)
-
-
-class UNETExpandingBlock(nn.Module):
-    """
-    UNETExpandingBlock Class:
-    Symmetric to the UNETContracting block, with the addition of skip connection which concatenates the output of the
-    respective contracting block.
-    Attention: Unlike UNET paper, we add padding=1 to Conv2d layers to make a "symmetric" version of UNET.
-    """
-
-    def __init__(self, c_in: int, use_bn: bool = True, use_dropout: bool = False, activation: str = 'relu'):
-        """
-        UNETExpandingBlock class constructor.
-        :param c_in: number of input channels
-        :param use_bn: indicates if InstanceNormalization2d is applied or not after Conv2d layer
-        :param use_dropout: indicates if Dropout is applied after BatchNorm2d
-        :param activation: type of activation function used (supported: 'relu', 'lrelu')
-        """
-        super(UNETExpandingBlock, self).__init__()
-        # Up-sample + convolution (instead of transposed convolution)
-        # noinspection PyTypeChecker
-        self.upsample_and_1st_conv = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-            nn.Conv2d(c_in, c_in // 2, kernel_size=2)
-        )
-        # Then, the output is concatenated with encoder's output at same level
-        # Then, the rest of the ExpandingBlock architecture follows
-        # noinspection PyTypeChecker
-        self._2nd_and_3rd_conv = nn.Sequential(
-            # 2nd convolution layer
-            nn.Conv2d(c_in, c_in // 2, kernel_size=3, padding=1),
-            nn.BatchNorm2d(c_in // 2) if use_bn else nn.Identity(),
-            nn.Dropout() if use_dropout else nn.Identity(),
-            nn.ReLU() if activation == 'relu' else nn.LeakyReLU(0.2),
-            # 3rd convolution layer
-            nn.Conv2d(c_in // 2, c_in // 2, kernel_size=2, padding=1),
-            nn.BatchNorm2d(c_in // 2) if use_bn else nn.Identity(),
-            nn.Dropout() if use_dropout else nn.Identity(),
-            nn.ReLU() if activation == 'relu' else nn.LeakyReLU(0.2),
-        )
-
-    def forward(self, x: Tensor, skip_conn_at_x: Tensor) -> Tensor:
-        """
-        Function for completing a forward pass of ExpandingBlock:
-        Given an image tensor, completes an expanding block and returns the transformed tensor.
-        :param (Tensor) x: image tensor of shape (N, C, H, W)
-        :param (Tensor) skip_conn_at_x: the image tensor from the contracting path (from the opposing block of x)
-                                        for the skip connection
-        :return: the transformed image tensor of shape (N, C/2, H*2, W*2)
-        """
-        x = self.upsample_and_1st_conv(x)
-        # Specify cat()'s dim to be 1 (aka channels), since we want a channel-wise concatenation of the two tensors
-        x = torch.cat([x, UNETExpandingBlock.crop_skip_connection(skip_conn_at_x, x.shape)], dim=1)
-        return self._2nd_and_3rd_conv(x)
 
     @staticmethod
     def crop_skip_connection(skip_con: Tensor, shape: torch.Size) -> Tensor:
