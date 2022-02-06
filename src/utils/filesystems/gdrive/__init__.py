@@ -38,9 +38,10 @@ class GDriveDataset(FilesystemDataset):
         self.zip_filename = zip_filename
         self.zip_gfile = [self.dataset_gfolder.file_by_name(_zfn) for _zfn in zip_filename] \
             if type(zip_filename) == list else self.dataset_gfolder.file_by_name(zip_filename)
-        assert self.zip_gfile is not None, f'zip_filename={zip_filename} NOT FOUND in Google Drive folder root'
         zip_filename_wo_ext = zip_filename.replace('.zip', '')
         self.subfolders = [sf for sf in self.dataset_gfolder.subfolders if sf.name.startswith(zip_filename_wo_ext)]
+        assert self.zip_gfile is not None or len(self.subfolders) > 0, \
+            f'zip_filename={zip_filename} NOT FOUND in Google Drive folder root'
 
     def fetch_and_unzip(self, in_parallel: bool = False,
                         show_progress: bool = False) -> Union[List[Union[ApplyResult, bool]], ApplyResult, bool]:
@@ -61,7 +62,8 @@ class GDriveDataset(FilesystemDataset):
         if zip_local_filepath.endswith('.hdf5') or zip_local_filepath.endswith('.h5'):
             return os.path.exists(zip_local_filepath) and os.path.isfile(zip_local_filepath)
         # Else, check if folder with the same filename as the .zip (without the extension) exists in FS
-        return os.path.exists(zip_local_filepath) and len(self.subfolders) > 0
+        if not os.path.exists(zip_local_filepath):
+            return len(self.subfolders) > 0
 
     @staticmethod
     def instance(groot_or_capsule_or_fs: Union[FilesystemFolder, FilesystemCapsule, Filesystem],
