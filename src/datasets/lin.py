@@ -235,7 +235,7 @@ class LINDataloader(DataLoader):
 class LINNearestDataloader(DataLoader):
     """
     LINNearestDataloader Class:
-    This class is used to load and access LINNearestDatset class using PyTorch's DataLoader interface.
+    This class is used to load and access LINNearestDataset class using PyTorch's DataLoader interface.
     """
 
     def __init__(self, dataset_fs_folder_or_root: FilesystemFolder, image_transforms: Optional[Compose] = None,
@@ -696,7 +696,6 @@ class LINNearestNeighborsScraper:
             # Read (composite) json file
             with open(nearest_neighbors_info_path, 'r') as json_fp:
                 nn_info = json.load(json_fp)
-            k = nn_info['_k']
             nn_pkl_items = []
             nn_reds_pkl_items = []
             pkl_path_to_index = {}

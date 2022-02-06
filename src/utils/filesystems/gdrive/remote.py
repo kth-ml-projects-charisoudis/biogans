@@ -830,6 +830,7 @@ if __name__ == '__main__':
         local_gdrive_root=f'/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.gdrive_personal',
         use_refresh_token=True, update_credentials=True)
     _gfs = GDriveFilesystem(gcapsule=_gc)
+    # noinspection SpellCheckingInspection
     _gf = GDriveFolder.root(_gfs, update_cache=True, cloud_root='1f7LxjJJTirrFbQBMrknZ0RYTbB66wmO3')
     _gfm = _gf.subfolder_by_name_or_create('Models', recursive=False) \
         .subfolder_by_name_or_create('model_name=biogan', recursive=False) \
