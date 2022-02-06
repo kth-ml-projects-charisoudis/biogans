@@ -26,8 +26,8 @@ from utils.string import to_human_readable
 class LINDataset(Dataset, GDriveDataset):
     """
     LINDataset Class:
-    This class is used to define the way LookBook dataset is accessed for the purpose of pixel-wise domain transfer
-    (PixelDT).
+    This class is used to define the way LIN dataset is accessed for the purpose of biological image synthesis GANs
+    (biogans).
     """
 
     # Dataset name is the name of the folder in Google Drive under which dataset's "Img.zip" file exists
@@ -42,10 +42,6 @@ class LINDataset(Dataset, GDriveDataset):
         'Sid2',
         'Tea1',
     ]
-
-    # Default normalization parameters for ICRB (converts tensors' ranges to [-1,1]
-    NormalizeMean = 0.5
-    NormalizeStd = 0.5
 
     def __init__(self, dataset_fs_folder_or_root: FilesystemFolder, image_transforms: Optional[Compose] = None,
                  train_not_test: bool = True, which_classes: str = 'all', logger: Optional[CommandLineLogger] = None,
