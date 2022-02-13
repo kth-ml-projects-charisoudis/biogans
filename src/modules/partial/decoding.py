@@ -138,17 +138,20 @@ class ChannelsProjectLayer(nn.Module):
         c_out: the number of channels to expect for a given output
     """
 
-    def __init__(self, c_in: int, c_out: int, use_spectral_norm: bool = False, padding: int = 0):
+    def __init__(self, c_in: int, c_out: int, use_spectral_norm: bool = False, padding: int = 0,
+                 kernel_size: int or tuple = 1, stride: int or tuple = 1):
         """
         ChannelsProjectLayer class constructor.
         :param (int) c_in: number of input channels
         :param (int) c_out: number of output channels
         :param (bool) use_spectral_norm: set to True to add a spectral normalization layer after the Conv2d
         :param (int) padding: nn.Conv2d's padding argument
+        :param (int) kernel_size: filter (kernel) size of torch.nn.Conv2d
+        :param (int) stride: stride of torch.nn.ConvTranspose2d (defaults to 2 for our needs)
         """
         super(ChannelsProjectLayer, self).__init__()
         # noinspection PyTypeChecker
-        self.feature_map_block = nn.Conv2d(c_in, c_out, stride=1, kernel_size=1, padding=padding)
+        self.feature_map_block = nn.Conv2d(c_in, c_out, kernel_size=kernel_size, stride=stride, padding=padding)
         if use_spectral_norm:
             self.feature_map_block = nn.utils.spectral_norm(self.feature_map_block)
 

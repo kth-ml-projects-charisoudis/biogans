@@ -45,7 +45,7 @@ class LINDataset(Dataset, GDriveDataset):
 
     def __init__(self, dataset_fs_folder_or_root: FilesystemFolder, image_transforms: Optional[Compose] = None,
                  train_not_test: bool = True, which_classes: str = 'all', logger: Optional[CommandLineLogger] = None,
-                 return_path: bool = True):
+                 return_path: bool = False):
         """
         LINDataset class constructor.
         :param (FilesystemFolder) dataset_fs_folder_or_root: a `utils.ifaces.FilesystemFolder` object to download / use
@@ -175,12 +175,14 @@ class LINNearestDataset(LINDataset):
         self.nearest_neighbors_path = os.path.join(self.root, f'nearest_neighbors.pth')
         self.nearest_neighbors_all = None
         self.nearest_neighbors = None
-        if os.path.exists(self.nearest_neighbors_path):
-            self.nearest_neighbors_all = torch.load(self.nearest_neighbors_path)
-            self.nearest_neighbors = self.nearest_neighbors_all['reds' if reds_only else 'red_greens']
-        else:
+        if not os.path.exists(self.nearest_neighbors_path):
             self.logger.critical(f'nearest_neighbors_path={self.nearest_neighbors_path}: NOT FOUND')
             raise FileNotFoundError(self.nearest_neighbors_path)
+        self.reds_only = reds_only
+
+    def load_nearest_neighbors(self):
+        self.nearest_neighbors_all = torch.load(self.nearest_neighbors_path)
+        self.nearest_neighbors = self.nearest_neighbors_all['reds' if self.reds_only else 'red_greens']
 
     def __getitem__(self, index: int) -> Tensor:
         """
@@ -188,6 +190,8 @@ class LINNearestDataset(LINDataset):
         :param (int) index: integer with the current image index that we want to read from disk
         :return: an image from the dataset as a torch.Tensor object
         """
+        if self.nearest_neighbors is None:
+            self.load_nearest_neighbors()
         return self.nearest_neighbors[index]
 
     def __len__(self) -> int:
@@ -196,6 +200,8 @@ class LINNearestDataset(LINDataset):
         the total number of  images contained in each pile (or the min of them if they differ).
         :return: integer
         """
+        if self.nearest_neighbors is None:
+            self.load_nearest_neighbors()
         return self.nearest_neighbors.shape[0]
 
 

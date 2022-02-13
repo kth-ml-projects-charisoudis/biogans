@@ -13,7 +13,7 @@ class ContractingBlock(nn.Module):
     Performs a convolution followed by a max pool operation and an optional instance norm.
     """
 
-    def __init__(self, c_in: int, use_norm: bool = True, kernel_size: int = 3, activation: Optional[str] = 'relu',
+    def __init__(self, c_in: int, use_norm: bool = False, kernel_size: int = 3, activation: Optional[str] = 'lrelu',
                  c_out: int = None, stride: int = 2, padding: int = 1, padding_mode: str = 'reflect',
                  norm_type: str = 'instance', use_dropout: bool = False):
         """

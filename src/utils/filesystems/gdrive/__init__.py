@@ -64,6 +64,7 @@ class GDriveDataset(FilesystemDataset):
         # Else, check if folder with the same filename as the .zip (without the extension) exists in FS
         if not os.path.exists(zip_local_filepath):
             return len(self.subfolders) > 0
+        return True
 
     @staticmethod
     def instance(groot_or_capsule_or_fs: Union[FilesystemFolder, FilesystemCapsule, Filesystem],
