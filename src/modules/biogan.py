@@ -230,7 +230,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
         ##########################################
         with self.gen.frozen():
             self.disc_opt.zero_grad()  # Zero out discriminator gradient (before backprop)
-            z = self.gen.get_random_z(batch_size=batch_size)
+            z = self.gen.get_random_z(batch_size=batch_size, device=device)
             g_out = self.gen(z)
             disc_loss = self.disc.get_loss_both(real=x, fake=g_out.detach())
             disc_loss.backward(retain_graph=True)  # Update discriminator gradients
@@ -247,7 +247,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
         ##########################################
         with self.disc.frozen():
             self.gen_opt.zero_grad()
-            z = self.gen.get_random_z(batch_size=batch_size)
+            z = self.gen.get_random_z(batch_size=batch_size, device=device)
             g_out = self.gen(z)
             gen_loss = self.disc.get_loss(x=g_out, is_real=True)
             gen_loss.backward()  # Update generator gradients
