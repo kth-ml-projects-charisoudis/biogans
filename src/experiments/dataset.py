@@ -1,10 +1,14 @@
 import os
+import subprocess
 
+import torch
 from matplotlib import pyplot as plt
 
 from datasets.lin import LINNearestDataset, LINDataset
 from utils.command_line_logger import CommandLineLogger
 from utils.filesystems.local import LocalCapsule, LocalFolder
+
+plt.rcParams["font.family"] = 'JetBrains Mono'
 
 datasets = {}
 datasets_nn = {}
@@ -76,15 +80,41 @@ def plot_nns_gr(which_class: str = 'Alp14'):
             plt.Rectangle((x0, y0), width, height, edgecolor='red', linestyle='--', linewidth=1, fill=False)
         )
     plt.suptitle(list(img_ds_nnr.nearest_neighbors_info.keys())[0])
+    plt.savefig(f'dataset-2-{which_class.lower()}.pdf')
     plt.show()
 
 
-def plot_images():
-    alp14_ds = datasets['Alp14']
-    alp14_ds_0 = alp14_ds[0]
-    plt.imshow(alp14_ds_0[0].reshape(48, 80), cmap="Reds")
-    plt.show()
-    plt.imshow(alp14_ds_0[1].reshape(48, 80), cmap="Greens")
+def plot_images(n_samples_per_class: int = 1):
+    if os.path.exists('dataset-1.pdf'):
+        subprocess.call(('xdg-open', 'dataset-1.pdf'))
+        return
+    rows = 3 * n_samples_per_class
+    fig, _ = plt.subplots(rows, 6, figsize=(15, 5 * n_samples_per_class))
+    for sample_i in range(n_samples_per_class):
+        for i, class_name in zip(range(1, 7), LINDataset.Classes):
+            # 1st row
+            plt.subplot(rows, 6, i + sample_i * 18)
+            ds = datasets[class_name]
+            ds_0 = ds[0]
+            rgb_img = torch.concat((ds_0, torch.zeros((1, 48, 80))), dim=0)
+            plt.imshow(rgb_img.permute(1, 2, 0))
+            if sample_i == 0:
+                plt.title(class_name)
+            plt.axis('off')
+            plt.tight_layout()
+            # 2nd row
+            plt.subplot(rows, 6, 6 + i + sample_i * 18)
+            plt.imshow(ds_0[0].reshape(48, 80), cmap="Reds")
+            plt.axis('off')
+            plt.tight_layout()
+            # 3rd row
+            plt.subplot(rows, 6, 12 + i + sample_i * 18)
+            plt.imshow(ds_0[1].reshape(48, 80), cmap="Greens")
+            plt.axis('off')
+            plt.tight_layout()
+    plt.tight_layout()
+    plt.suptitle('First 3 Images per Training Class Dataset')
+    plt.savefig('dataset-1.pdf')
     plt.show()
 
 
@@ -96,14 +126,15 @@ if __name__ == '__main__':
     # Initialize Datasets
     _logger = CommandLineLogger(log_level=os.getenv('LOG_LEVEL', 'info'), name='main')
     for _class in LINDataset.Classes:
-        datasets[_class] = LINDataset(dataset_fs_folder_or_root=_groot, which_classes=_class, logger=_logger,
-                                      return_path=False)
+        # datasets[_class] = LINDataset(dataset_fs_folder_or_root=_groot, which_classes=_class, logger=_logger,
+        #                               return_path=False)
         datasets_nn[_class] = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes=_class, logger=_logger)
         datasets_nnr[_class] = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes=_class, logger=_logger,
                                                  reds_only=True)
-    # Plot random images
-    plot_images()
+    # # Plot random images
+    # plot_images(n_samples_per_class=3)
     # Plot k-NNs
-    plot_nns()
+    # plot_nns()
     plot_nns_r()
+    plot_nns_gr('Alp14')
     plot_nns_gr('Arp3')

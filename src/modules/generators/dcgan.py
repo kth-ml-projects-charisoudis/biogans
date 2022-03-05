@@ -37,10 +37,14 @@ class DCGanGenerator(nn.Module, BalancedFreezable):
                            kernel_size=2, stride=2, padding=0, output_padding=0),
         )
         self.gen = nn.Sequential(*layers)
+        self.z_dim = z_dim
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         assert z.dim() == 2, f'z must be 2-dimensional ({z.dim()}-d tensor provided)'
         return self.gen(z.reshape([z.shape[0], -1, 1, 1]))
+
+    def get_random_z(self, batch_size: int = 1) -> torch.Tensor:
+        return torch.randn(batch_size, self.z_dim)
 
 
 class SeparableDCGanGenerator(nn.Module, BalancedFreezable):

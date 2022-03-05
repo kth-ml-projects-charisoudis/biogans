@@ -80,38 +80,37 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
         return self.disc(x)
 
     # noinspection DuplicatedCode
-    def get_loss(self, real: Tensor, fake: Tensor, condition: Optional[Tensor] = None,
-                 criterion: Optional[nn.modules.Module] = None, real_unassoc: Optional[Tensor] = None) -> Tensor:
+    def get_loss_both(self, real: Tensor, fake: Tensor, criterion: Optional[nn.modules.Module] = None) -> Tensor:
         """
-        Compute adversarial loss.
+        Compute adversarial loss using both real and fake images.
         :param (torch.Tensor) real: image tensor of shape (N, C, H, W) from real dataset
         :param (torch.Tensor) fake: image tensor of shape (N, C, H, W) produced by generator (i.e. fake images)
-        :param (optional) condition: condition image tensor of shape (N, C_in/2, H, W) that is stacked before input to
-                                     PatchGAN discriminator (optional)
         :param (optional) criterion: loss function (such as nn.BCELoss, nn.MSELoss and others)
-        :param (torch.Tensor) real_unassoc: (to use only for Associated/Unassociated discriminator (e.g. PixelDTGan))
+        :return: torch.Tensor containing loss value(s)
+        """
+        loss_on_real = self.get_loss(real, is_real=True, criterion=criterion)
+        loss_on_fake = self.get_loss(fake, is_real=False, criterion=criterion)
+        return 0.5 * (loss_on_real + loss_on_fake)
+
+    # noinspection DuplicatedCode
+    def get_loss(self, x: Tensor, is_real: bool, criterion: Optional[nn.modules.Module] = None) -> Tensor:
+        """
+        Compute adversarial loss using both real and fake images.
+        :param (torch.Tensor) x: image tensor of shape (N, C, H, W) from either dataset
+        :param (bool) is_real: set to True to compare predictions with 1s, else with 0s
+        :param (optional) criterion: loss function (such as nn.BCELoss, nn.MSELoss and others)
         :return: torch.Tensor containing loss value(s)
         """
         # Setup criterion
         criterion = self.adv_criterion if criterion is None else criterion
+        assert criterion is not None
         # Proceed with loss calculation
-        predictions_on_real = self(real, condition)
-        predictions_on_fake = self(fake, condition)
-        print(predictions_on_fake.shape)
-        # print('DISC OUTPUT SHAPE: ' + str(predictions_on_fake.shape))
-        if type(criterion) == torch.nn.modules.loss.BCELoss:
-            predictions_on_real = nn.Sigmoid()(predictions_on_real)
-            predictions_on_fake = nn.Sigmoid()(predictions_on_fake)
-        loss_on_real = criterion(predictions_on_real, torch.ones_like(predictions_on_real))
-        loss_on_fake = criterion(predictions_on_fake, torch.zeros_like(predictions_on_fake))
-        losses = [loss_on_real, loss_on_fake]
-        if real_unassoc is not None:
-            predictions_on_real_unassoc = self(real_unassoc[0:condition.shape[0], :, :, :], condition)
-            if type(criterion) == torch.nn.modules.loss.BCELoss:
-                predictions_on_real_unassoc = nn.Sigmoid()(predictions_on_real_unassoc)
-            loss_on_real_unassoc = criterion(predictions_on_real_unassoc, torch.zeros_like(predictions_on_real_unassoc))
-            losses.append(loss_on_real_unassoc)
-        return torch.mean(torch.stack(losses))
+        predictions = self(x)
+        # print('DISC OUTPUT SHAPE: ' + str(predictions.shape))
+        if type(criterion) in [nn.modules.loss.BCELoss, nn.modules.loss.BCEWithLogitsLoss]:
+            predictions = nn.Sigmoid()(predictions)
+        reference = torch.ones_like(predictions) if is_real else torch.zeros_like(predictions)
+        return criterion(predictions, reference)
 
     def get_layer_attr_names(self) -> List[str]:
         return ['patch_gan_discriminator', ]
