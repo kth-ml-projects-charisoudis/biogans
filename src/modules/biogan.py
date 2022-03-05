@@ -320,8 +320,10 @@ class OneClassBioGan(nn.Module, IGanGModule):
         ncols = 2
         nrows = 2
         grid = create_img_grid(images=torch.stack([
-            x_0, g_out_0,
-            x__1, g_out__1,
+            torch.concat((x_0, torch.zeros((1, 48, 80))), dim=0),
+            torch.concat((g_out_0, torch.zeros((1, 48, 80))), dim=0),
+            torch.concat((x__1, torch.zeros((1, 48, 80))), dim=0),
+            torch.concat((g_out__1, torch.zeros((1, 48, 80))), dim=0),
         ]), nrows=nrows, ncols=ncols, gen_transforms=self.gen_transforms)
 
         # Plot
@@ -329,3 +331,58 @@ class OneClassBioGan(nn.Module, IGanGModule):
                          footnote_l=f'epoch={str(self.epoch).zfill(3)} | step={str(self.step).zfill(10)}',
                          footnote_r=f'gen_loss={"{0:0.3f}".format(round(np.mean(self.gen_losses).item(), 3))}, '
                                     f'disc_loss={"{0:0.3f}".format(round(np.mean(self.disc_losses).item(), 3))}')
+
+
+if __name__ == '__main__':
+    from datasets.lin import LINDataloader
+    from utils.filesystems.local import LocalFolder, LocalFilesystem, LocalCapsule
+
+    # Get GoogleDrive root folder
+    _local_gdrive_root = '/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.gdrive_personal'
+    _log_level = 'debug'
+
+    # Via locally-mounted Google Drive (when running from inside Google Colaboratory)
+    _fs = LocalFilesystem(LocalCapsule(_local_gdrive_root))
+    _groot = LocalFolder.root(capsule_or_fs=_fs)
+
+    # Define folder roots
+    _models_groot = _groot.subfolder_by_name('Models')
+    _datasets_groot = _groot.subfolder_by_name('Datasets')
+
+    exec_device = 'cpu'
+
+    ###################################
+    ###   Dataset Initialization    ###
+    ###################################
+    #   - the dataloader used to access the training dataset of cross-scale/pose image pairs at every epoch
+    #     > len(dataloader) = <number of batches>
+    #     > len(dataloader.dataset) = <number of total dataset items>
+    dataloader = LINDataloader(dataset_fs_folder_or_root=_datasets_groot, train_not_test=True,
+                               batch_size=2, which_classes='Alp14')
+    dataset = dataloader.dataset
+
+    ###################################
+    ###    Models Initialization    ###
+    ###################################
+    #   - initialize evaluator instance (used to run GAN evaluation metrics: FID, IS, PRECISION, RECALL, F1 and SSIM)
+    evaluator = GanEvaluator(model_fs_folder_or_root=_models_groot, gen_dataset=dataset, target_index=1,
+                             device=exec_device, condition_indices=(0, 2), n_samples=2, batch_size=2, f1_k=2)
+    #   - initialize model
+    chkpt_step = None
+    try:
+        if chkpt_step == 'latest':
+            _chkpt_step = chkpt_step
+        elif isinstance(chkpt_step, str) and chkpt_step.isdigit():
+            _chkpt_step = int(chkpt_step)
+        else:
+            _chkpt_step = None
+    except NameError:
+        _chkpt_step = None
+    biogan = OneClassBioGan(model_fs_folder_or_root=_models_groot, config_id='default', dataset_len=len(dataset),
+                            chkpt_epoch=_chkpt_step, evaluator=evaluator, device=exec_device, log_level='debug')
+    biogan.logger.debug(f'Using device: {str(exec_device)}')
+    biogan.logger.debug(f'Model initialized. Number of params = {biogan.nparams_hr}')
+
+    # Test visualization
+    biogan(next(iter(dataloader)))
+    biogan.visualize()
