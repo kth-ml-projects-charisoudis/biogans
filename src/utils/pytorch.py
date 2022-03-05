@@ -199,6 +199,8 @@ def invert_transforms(ts: transforms.Compose) -> transforms.Compose:
     :param ts: transforms.Compose object with the list of transforms to be inverted
     :return: a torchvision.transforms.Compose object with the last transforms inverted
     """
+    if type(ts) == transforms.ToTensor:
+        return transforms.Compose([ToTensorOrPass(), ])
     inverse_transforms_list = []
     for i in reversed(range(len(ts.transforms))):
         t = ts.transforms[i]

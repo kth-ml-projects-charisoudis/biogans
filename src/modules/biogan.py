@@ -285,32 +285,30 @@ class OneClassBioGan(nn.Module, IGanGModule):
     # -------------
     #
 
+    # noinspection SpellCheckingInspection
     def visualize_indices(self, indices: Union[int, tuple, Sequence]) -> Image:
-        # Fetch images
-        assert hasattr(self, 'evaluator') and hasattr(self.evaluator, 'dataset'), 'Could not find dataset from model'
-        images = []
-        with self.gen.frozen():
-            for index in indices:
-                x = self.evaluator.dataset[index]
-                g_out = self.gen(x.unsqueeze(0)).squeeze(0)
-                images.extend([x, g_out])
-
-        # Convert to grid of images
-        ncols = 2
-        nrows = int(len(images) / ncols)
-        grid = create_img_grid(images=torch.stack(images), nrows=nrows, ncols=ncols, gen_transforms=self.gen_transforms)
-
-        # Plot
-        return plot_grid(grid=grid, figsize=(ncols, nrows),
-                         footnote_l=f'epoch={str(self.epoch).zfill(3)} | step={str(self.step).zfill(10)} | '
-                                    f'indices={indices}',
-                         footnote_r=f'gen_loss={"{0:0.3f}".format(round(np.mean(self.gen_losses).item(), 3))}, '
-                                    f'disc_loss={"{0:0.3f}".format(round(np.mean(self.disc_losses).item(), 3))}')
+        # # Fetch images
+        # assert hasattr(self, 'evaluator') and hasattr(self.evaluator, 'dataset'), 'Could not find dataset from model'
+        # images = []
+        # with self.gen.frozen():
+        #     for index in indices:
+        #         x = self.evaluator.dataset[index]
+        #         g_out = self.gen(x.unsqueeze(0)).squeeze(0)
+        #         images.extend([x, g_out])
+        # # Convert to grid of images
+        # ncols = 2
+        # nrows = int(len(images) / ncols)
+        # grid = create_img_grid(images=torch.stack(images), nrows=nrows, ncols=ncols,
+        #                        gen_transforms=self.gen_transforms)
+        # # Plot
+        # return plot_grid(grid=grid, figsize=(ncols, nrows),
+        #                  footnote_l=f'epoch={str(self.epoch).zfill(3)} | step={str(self.step).zfill(10)} | '
+        #                             f'indices={indices}',
+        #                  footnote_r=f'gen_loss={"{0:0.3f}".format(round(np.mean(self.gen_losses).item(), 3))}, '
+        #                             f'disc_loss={"{0:0.3f}".format(round(np.mean(self.disc_losses).item(), 3))}')
+        raise NotImplementedError('Cannot really implement reproducibility in Noise-to-Image context.')
 
     def visualize(self, reproducible: bool = False) -> Image:
-        if reproducible:
-            return self.visualize_indices(indices=self.reproducible_indices)
-
         # Get first & last sample from saved images in self
         x_0 = self.x[0]
         g_out_0 = self.g_out[0]
