@@ -3,16 +3,13 @@ from typing import Optional, Union, Tuple
 
 import torch
 import torch.nn as nn
-from datasets.deep_fashion import ICRBCrossPoseDataset, ICRBDataset
-from modules.generators.pgpg import PGPGGenerator
 from torch import Tensor
 # noinspection PyProtectedMember
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms
+from tqdm.autonotebook import tqdm
 
 from modules.classifiers.inception import InceptionV3
-from utils.dep_free import get_tqdm
-from utils.filesystems.local import LocalCapsule, LocalFolder
 from utils.ifaces import FilesystemFolder, Freezable
 from utils.pytorch import matrix_sqrt, cov, ToTensorOrPass
 
@@ -64,7 +61,7 @@ class FID(nn.Module):
         :param (int) batch_size: the number of samples to precess at each loop
         """
         super(FID, self).__init__()
-        self.tqdm = get_tqdm()
+        self.tqdm = tqdm
 
         # Instantiate Inception v3 model(s)
         if FID.InceptionV3Cropped is None:
@@ -191,26 +188,3 @@ class FID(nn.Module):
         fake_embeddings_cov = cov(fake_embeddings)
         # Compute Frechet distance of embedding vectors and return
         return _frechet_distance(real_embeddings_mean, fake_embeddings_mean, real_embeddings_cov, fake_embeddings_cov)
-
-
-# noinspection DuplicatedCode
-if __name__ == '__main__':
-    # Init Google Drive stuff
-    _local_gdrive_root = '/home/achariso/PycharmProjects/gans-thesis/.gdrive'
-    _groot = LocalFolder.root(LocalCapsule(_local_gdrive_root))
-    _models_groot = _groot.subfolder_by_name('Models')
-    _datasets_groot = _groot.subfolder_by_name('Datasets')
-
-    # Setup evaluation dataset
-    _target_shape = 128
-    _target_channels = 3
-    _dataset = ICRBCrossPoseDataset(dataset_fs_folder_or_root=_datasets_groot,
-                                    image_transforms=ICRBDataset.get_image_transforms(_target_shape, _target_channels))
-
-    # Initialize Generator
-    _gen = PGPGGenerator(c_in=2 * _target_channels, c_out=_target_channels, w_in=_target_shape, h_in=_target_shape)
-
-    # Evaluate Generator using FID
-    _fid = FID(model_fs_folder_or_root=_models_groot, n_samples=2, batch_size=1)
-    fid = _fid(_dataset, _gen, target_index=1, condition_indices=(0, 2), show_progress=True)
-    print(fid)

@@ -18,14 +18,11 @@ from typing import Optional, Union
 import numpy as np
 import torch
 import torch.nn as nn
-from datasets.deep_fashion import FISBDataset
-from modules.generators.stylegan import StyleGanGenerator
 from torch import Tensor
 from torch.utils.data import Dataset, DataLoader
+from tqdm.autonotebook import tqdm
 
 from modules.classifiers.vgg16 import LPIPSLoss
-from utils.dep_free import get_tqdm
-from utils.filesystems.local import LocalFolder, LocalCapsule
 from utils.ifaces import FilesystemFolder
 
 
@@ -84,12 +81,12 @@ class PPL(nn.Module):
         self.device = device
         self.n_samples = n_samples
         self.batch_size = batch_size
-        self.tqdm = get_tqdm()
+        self.tqdm = tqdm
 
-    def sampler(self, c: torch.Tensor, gen: StyleGanGenerator) -> torch.Tensor:
+    def sampler(self, c: torch.Tensor, gen) -> torch.Tensor:
         """
         :param (Tensor) c: dataset one-hot labels as torch.Tensor object
-        :param (StyleGanGenerator) gen: the generator module
+        :param gen: the generator module
         :return: a torch.Tensor of shape (B, 1)
         """
         # Generate random latents and interpolation t-values.
@@ -99,18 +96,12 @@ class PPL(nn.Module):
         # Interpolate in W or Z.
         # TODO: This version only works on unlabelled data. If labels exist, they are ignored, whereas in StyleGAN2 they
         # TODO: are also used to further disentangle the noise space.
-        if self.space == 'w':
-            w0, w1 = gen.noise_mapping(torch.cat([z0, z1])).chunk(2)
-            wt0 = w0.lerp(w1, t.unsqueeze(1))
-            wt1 = w0.lerp(w1, t.unsqueeze(1) + self.epsilon)
-        else:  # space == 'z'
-            zt0 = slerp(z0, z1, t.unsqueeze(1))
-            zt1 = slerp(z0, z1, t.unsqueeze(1) + self.epsilon)
-            wt0, wt1 = gen.noise_mapping(torch.cat([zt0, zt1])).chunk(2)
+        zt0 = slerp(z0, z1, t.unsqueeze(1))
+        zt1 = slerp(z0, z1, t.unsqueeze(1) + self.epsilon)
 
         # Generate images.
-        img_t0 = gen(w=wt0)
-        img_t1 = gen(w=wt1)
+        img_t0 = gen(zt0)
+        img_t1 = gen(zt1)
 
         # Compute individual losses and then sum up
         lpips_t0 = self.__class__.LPIPSLoss(img_t0)
@@ -169,27 +160,3 @@ class PPL(nn.Module):
         hi = np.percentile(dist, 99, interpolation='higher')
         ppl = np.extract(np.logical_and(dist >= lo, dist <= hi), dist).mean()
         return torch.tensor(ppl)
-
-
-# noinspection DuplicatedCode
-if __name__ == '__main__':
-    # Init Google Drive stuff
-    _local_gdrive_root = '/home/achariso/PycharmProjects/gans-thesis/.gdrive'
-    _groot = LocalFolder.root(LocalCapsule(_local_gdrive_root))
-    _models_groot = _groot.subfolder_by_name('Models')
-    _datasets_groot = _groot.subfolder_by_name('Datasets')
-
-    # Setup evaluation dataset
-    _target_shape = 128
-    _target_channels = 3
-    _dataset = FISBDataset(dataset_fs_folder_or_root=_datasets_groot,
-                           image_transforms=FISBDataset.get_image_transforms(_target_shape, _target_channels))
-
-    # Initialize Generator
-    _device = 'cpu'
-    _gen = StyleGanGenerator(resolution=128, num_iters=1).to(_device)
-
-    # Evaluate Generator using FID
-    _ppl_calculator = PPL(model_fs_folder_or_root=_models_groot, n_samples=10, batch_size=2, device=_device)
-    _ppl = _ppl_calculator(_dataset, _gen, target_index=0, condition_indices=None, show_progress=True)
-    print(_ppl)

@@ -3,13 +3,10 @@ __all__ = ['fid', 'f1', 'ssim', 'is_', 'GanEvaluator']
 from typing import Optional, Union, Dict
 
 import torch
-from datasets.deep_fashion import ICRBCrossPoseDataset, ICRBDataset
-from modules.generators.pgpg import PGPGGenerator
 from torch import nn
 # noinspection PyProtectedMember
 from torch.utils.data import Dataset, Subset
 
-from utils.filesystems.local import LocalFolder, LocalCapsule
 from utils.ifaces import FilesystemFolder
 from utils.metrics.f1 import F1
 from utils.metrics.fid import FID
@@ -103,27 +100,3 @@ class GanEvaluator(object):
                     metrics_dict[metric_name] = metric.item()
         # Return metrics dict
         return metrics_dict
-
-
-# noinspection DuplicatedCode
-if __name__ == '__main__':
-    # Init Google Drive stuff
-    _local_gdrive_root = '/home/achariso/PycharmProjects/gans-thesis/.gdrive'
-    _groot = LocalFolder.root(LocalCapsule(_local_gdrive_root))
-    _models_groot = _groot.subfolder_by_name('Models')
-    _datasets_groot = _groot.subfolder_by_name('Datasets')
-
-    # Setup evaluation dataset
-    _target_shape = 128
-    _target_channels = 3
-    _dataset = ICRBCrossPoseDataset(dataset_fs_folder_or_root=_datasets_groot,
-                                    image_transforms=ICRBDataset.get_image_transforms(_target_shape, _target_channels))
-
-    # Initialize Generator
-    _gen = PGPGGenerator(c_in=2 * _target_channels, c_out=_target_channels, w_in=_target_shape, h_in=_target_shape)
-
-    # Evaluate Generator using FID
-    _evaluator = GanEvaluator(model_fs_folder_or_root=_models_groot, gen_dataset=_dataset, n_samples=5, batch_size=1,
-                              ssim_c_img=_target_channels, target_index=1, condition_indices=(0, 2), f1_k=1)
-    _metrics = _evaluator.evaluate(gen=_gen, show_progress=True)
-    print(_metrics)

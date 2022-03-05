@@ -3,13 +3,10 @@ from typing import Optional, Union, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
-from datasets.deep_fashion import ICRBCrossPoseDataset, ICRBDataset
-from modules.generators.pgpg import PGPGGenerator
 from torch import Tensor
 # noinspection PyProtectedMember
 from torch.utils.data import Dataset
 
-from utils.filesystems.local import LocalFolder, LocalCapsule
 from utils.ifaces import FilesystemFolder
 from utils.metrics.fid import FID
 
@@ -179,27 +176,3 @@ class F1(FID):
         # Compute F1 score
         f1 = 2 * (precision * recall) / (precision + recall)
         return f1, precision, recall
-
-
-# noinspection DuplicatedCode
-if __name__ == '__main__':
-    # Init Google Drive stuff
-    _local_gdrive_root = '/home/achariso/PycharmProjects/gans-thesis/.gdrive'
-    _groot = LocalFolder.root(LocalCapsule(_local_gdrive_root))
-    _models_groot = _groot.subfolder_by_name('Models')
-    _datasets_groot = _groot.subfolder_by_name('Datasets')
-
-    # Setup evaluation dataset
-    _target_shape = 128
-    _target_channels = 3
-    _dataset = ICRBCrossPoseDataset(dataset_fs_folder_or_root=_datasets_groot, pose=True,
-                                    image_transforms=ICRBDataset.get_image_transforms(_target_shape, _target_channels))
-
-    # Initialize Generator
-    _gen = PGPGGenerator(c_in=2 * _target_channels, c_out=_target_channels, w_in=_target_shape, h_in=_target_shape)
-
-    # Evaluate Generator using FID
-    _f1_calculator = F1(model_fs_folder_or_root=_groot, n_samples=5, batch_size=1)
-    _f1, _precision, _recall = _f1_calculator(_dataset, gen=_gen, target_index=1, condition_indices=(0, 2), k=1,
-                                              show_progress=True)
-    print(_f1, _precision, _recall)

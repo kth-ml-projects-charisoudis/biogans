@@ -5,16 +5,13 @@ from typing import Optional, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as functional
-from datasets.deep_fashion import ICRBCrossPoseDataset, ICRBDataset
-from modules.generators.pgpg import PGPGGenerator
 from torch import Tensor
 from torch.autograd import Variable
 # noinspection PyProtectedMember
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms
+from tqdm.autonotebook import tqdm
 
-from utils.dep_free import get_tqdm
-from utils.filesystems.local import LocalFolder, LocalCapsule
 from utils.ifaces import Freezable
 
 
@@ -83,7 +80,7 @@ class SSIM(nn.Module):
         :param size_average: SSIM size average flag (set to True to output a scalar value of SSIM index)
         """
         super(SSIM, self).__init__()
-        self.tqdm = get_tqdm()
+        self.tqdm = tqdm
 
         # Create convolution kernel (a multivariate gaussian)
         self.window = SSIM._create_window(window_size, c_img)
@@ -184,26 +181,3 @@ class SSIM(nn.Module):
             ssim_maps = torch.cat(ssim_maps_list, dim=0).cpu()
 
         return ssim_maps.mean().float() if self.size_average else ssim_maps.mean(1).mean(1).mean(1).float()
-
-
-# noinspection DuplicatedCode
-if __name__ == '__main__':
-    # Init Google Drive stuff
-    _local_gdrive_root = '/home/achariso/PycharmProjects/gans-thesis/.gdrive'
-    _groot = LocalFolder.root(LocalCapsule(_local_gdrive_root))
-    _models_groot = _groot.subfolder_by_name('Models')
-    _datasets_groot = _groot.subfolder_by_name('Datasets')
-
-    # Setup evaluation dataset
-    _target_shape = 128
-    _target_channels = 3
-    _dataset = ICRBCrossPoseDataset(dataset_fs_folder_or_root=_datasets_groot,
-                                    image_transforms=ICRBDataset.get_image_transforms(_target_shape, _target_channels))
-
-    # Initialize Generator
-    _gen = PGPGGenerator(c_in=2 * _target_channels, c_out=_target_channels, w_in=_target_shape, h_in=_target_shape)
-
-    # Evaluate Generator using FID
-    _ssim_calculator = SSIM(n_samples=2, batch_size=1, device='cpu')
-    _ssim = _ssim_calculator(_dataset, _gen, target_index=1, condition_indices=(0, 2), show_progress=True)
-    print(_ssim)

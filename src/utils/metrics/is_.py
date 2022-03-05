@@ -4,14 +4,11 @@ from typing import Optional, Union
 import torch
 import torch.nn as nn
 import torch.utils.data
-from datasets.deep_fashion import ICRBCrossPoseDataset, ICRBDataset
-from modules.generators.pgpg import PGPGGenerator
 from torch import Tensor
 # noinspection PyProtectedMember
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms
 
-from utils.filesystems.local import LocalFolder, LocalCapsule
 from utils.ifaces import FilesystemFolder, Freezable
 from utils.metrics.fid import FID
 
@@ -105,26 +102,3 @@ class IS(FID):
             kls = [(p_y_given_xi * (p_y_given_xi / p_y).log()).sum() for p_y_given_xi in fake_predictions]
 
         return torch.exp(torch.mean(torch.stack(kls), dim=0))
-
-
-# noinspection DuplicatedCode
-if __name__ == '__main__':
-    # Init Google Drive stuff
-    _local_gdrive_root = '/home/achariso/PycharmProjects/gans-thesis/.gdrive'
-    _groot = LocalFolder.root(LocalCapsule(_local_gdrive_root))
-    _models_groot = _groot.subfolder_by_name('Models')
-    _datasets_groot = _groot.subfolder_by_name('Datasets')
-
-    # Setup evaluation dataset
-    _target_shape = 128
-    _target_channels = 3
-    _dataset = ICRBCrossPoseDataset(dataset_fs_folder_or_root=_datasets_groot,
-                                    image_transforms=ICRBDataset.get_image_transforms(_target_shape, _target_channels))
-
-    # Initialize Generator
-    _gen = PGPGGenerator(c_in=2 * _target_channels, c_out=_target_channels, w_in=_target_shape, h_in=_target_shape)
-
-    # Evaluate Generator using IS
-    _is_calculator = IS(model_fs_folder_or_root=_groot, n_samples=2, batch_size=1)
-    is_ = _is_calculator(dataset=_dataset, gen=_gen, condition_indices=(0, 2))
-    print(is_)
