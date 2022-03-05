@@ -17,5 +17,5 @@ oauth2client
 google-api-python-client
 pydrive
 tensorboard
-pyyaml>=5.1
+pyyaml
 h5py

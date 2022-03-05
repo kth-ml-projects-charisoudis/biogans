@@ -87,6 +87,8 @@ if exec_env == 'colab':
     # Colab filesystem is a locally-mounted filesystem. Interacts with native OS calls.
     fs = ColabFilesystem(ccapsule=ColabCapsule())
     groot = ColabFolder.root(capsule_or_fs=fs)
+    if args.gdrive_which == 'personal':
+        groot = groot.subfolder_by_name('ProjectGStorage')
 elif run_locally:
     # Local filesystem (basically one directory under given root). Interacts with native OS calls.
     fs = LocalFilesystem(ccapsule=LocalCapsule(local_root=local_gdrive_root))
