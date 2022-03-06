@@ -128,8 +128,7 @@ class FID(nn.Module):
                 # Compute real embeddings
                 target_output = real_samples[target_index] if target_index else real_samples
                 #   - add 3rd channel
-                target_output = torch.concat((target_output, torch.zeros(target_output.shape[0], 1, 48, 80).cuda()),
-                                             dim=1)
+                target_output = torch.concat((target_output, torch.zeros(target_output.shape[0], 1, 48, 80)), dim=1)
                 target_output = target_output.to(self.device)
                 real_embeddings = FID.InceptionV3Cropped(FID.InceptionV3Transforms(target_output))
                 real_embeddings_list.append(real_embeddings.detach().cpu())
