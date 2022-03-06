@@ -19,7 +19,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from tqdm.autonotebook import tqdm
 
 from modules.classifiers.vgg16 import LPIPSLoss
@@ -54,7 +54,7 @@ class PPL(nn.Module):
     LPIPSLoss: LPIPSLoss = None
 
     def __init__(self, model_fs_folder_or_root: FilesystemFolder, device: str, n_samples: int, batch_size: int = 8,
-                 epsilon: float = 1e-4, space: str = 'w', sampling: str = 'full'):
+                 epsilon: float = 1e-4, sampling: str = 'full'):
         """
         :param (FilesystemFolder) model_fs_folder_or_root: a `utils.ifaces.FilesystemFolder` instance for cloud or
                                                            locally saved models using the same API
@@ -62,11 +62,9 @@ class PPL(nn.Module):
         :param (int) n_samples: the total number of samples used to compute the metric (defaults to 512; the higher this
                                 number gets, the more accurate the metric is)
         :param (float) epsilon: step dt
-        :param (str) space: one of 'z', 'w'
         :param (str) sampling: one of 'full', 'end'
         """
         # Check arguments
-        assert space in ['z', 'w']
         assert sampling in ['full', 'end']
         # Init nn.Module
         super().__init__()
@@ -76,22 +74,21 @@ class PPL(nn.Module):
                                                  use_dropout=False, requires_grad=False).to(device)
         # Save model attributes
         self.epsilon = epsilon
-        self.space = space
         self.sampling = sampling
         self.device = device
         self.n_samples = n_samples
         self.batch_size = batch_size
         self.tqdm = tqdm
 
-    def sampler(self, c: torch.Tensor, gen) -> torch.Tensor:
+    def sampler(self, bs, gen) -> torch.Tensor:
         """
-        :param (Tensor) c: dataset one-hot labels as torch.Tensor object
+        :param int bs:
         :param gen: the generator module
         :return: a torch.Tensor of shape (B, 1)
         """
         # Generate random latents and interpolation t-values.
-        t = torch.rand([c.shape[0]], device=c.device) * (1 if self.sampling == 'full' else 0)
-        z0, z1 = torch.randn([c.shape[0] * 2, gen.z_dim], device=c.device).chunk(2)
+        t = torch.rand([bs], device=self.device) * (1 if self.sampling == 'full' else 0)
+        z0, z1 = torch.randn([bs * 2, gen.z_dim], device=self.device).chunk(2)
 
         # Interpolate in W or Z.
         # TODO: This version only works on unlabelled data. If labels exist, they are ignored, whereas in StyleGAN2 they
@@ -103,8 +100,8 @@ class PPL(nn.Module):
         img_t0 = gen(zt0)
         img_t1 = gen(zt1)
         #   - add 3rd channel
-        img_t0 = torch.concat((img_t0, torch.zeros(img_t0.shape[0], 1, 48, 80).cuda()), dim=1)
-        img_t1 = torch.concat((img_t0, torch.zeros(img_t0.shape[0], 1, 48, 80).cuda()), dim=1)
+        img_t0 = torch.concat((img_t0, torch.zeros(img_t0.shape[0], 1, 48, 80).to(self.device)), dim=1)
+        img_t1 = torch.concat((img_t1, torch.zeros(img_t1.shape[0], 1, 48, 80).to(self.device)), dim=1)
 
         # Compute individual losses and then sum up
         lpips_t0 = self.__class__.LPIPSLoss(img_t0)
@@ -131,22 +128,17 @@ class PPL(nn.Module):
         :return: a scalar torch.Tensor object containing the computed PPL value
         """
         # Create the dataloader instance
-        dataloader = DataLoader(dataset=dataset, batch_size=self.batch_size, shuffle=True)
         if self.device in ['cuda:0', 'cuda'] and torch.cuda.is_available():
             torch.cuda.empty_cache()
         # Sampling loop.
         dist = []
         cur_samples, break_after = 0, False
-        for real_samples in self.tqdm(dataloader, total=int(math.ceil(self.n_samples / self.batch_size)),
-                                      disable=not show_progress, desc='PPL'):
+        dataloader = [self.batch_size] * int(math.ceil(self.n_samples / self.batch_size))
+        for cur_batch_size in self.tqdm(dataloader, disable=not show_progress, desc='PPL'):
             if cur_samples >= self.n_samples:
                 break_after = True
-            cur_batch_size = real_samples.shape[0]
 
-            # No labels --> Replace with zeros
-            labels = torch.zeros(cur_batch_size, 0).to(self.device)
-
-            x = self.sampler(labels, gen=gen)
+            x = self.sampler(cur_batch_size, gen=gen)
             dist.append(x)
 
             cur_samples += cur_batch_size
@@ -159,3 +151,47 @@ class PPL(nn.Module):
         hi = np.percentile(dist, 99, interpolation='higher')
         ppl = np.extract(np.logical_and(dist >= lo, dist <= hi), dist).mean()
         return torch.tensor(ppl)
+
+
+if __name__ == '__main__':
+    from modules.biogan import OneClassBioGan
+    from utils.filesystems.local import LocalFolder, LocalFilesystem, LocalCapsule
+
+    # Get GoogleDrive root folder
+    _local_gdrive_root = '/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.gdrive_personal'
+    _log_level = 'debug'
+
+    # Via locally-mounted Google Drive (when running from inside Google Colaboratory)
+    _fs = LocalFilesystem(LocalCapsule(_local_gdrive_root))
+    _groot = LocalFolder.root(capsule_or_fs=_fs)
+
+    # Define folder roots
+    _models_groot = _groot.subfolder_by_name('Models')
+    _datasets_groot = _groot.subfolder_by_name('Datasets')
+
+    exec_device = 'cpu'
+
+    # ###################################
+    # ###   Dataset Initialization    ###
+    # ###################################
+    # #   - the dataloader used to access the training dataset of cross-scale/pose image pairs at every epoch
+    # #     > len(dataloader) = <number of batches>
+    # #     > len(dataloader.dataset) = <number of total dataset items>
+    # dataloader = LINDataloader(dataset_fs_folder_or_root=_datasets_groot, train_not_test=True,
+    #                            batch_size=2, which_classes='Alp14')
+    # dataset = dataloader.dataset
+
+    ###################################
+    ###    Models Initialization    ###
+    ###################################
+    #   - initialize model
+    biogan = OneClassBioGan(model_fs_folder_or_root=_models_groot, config_id='default',
+                            chkpt_epoch=None, evaluator=None, device=exec_device, log_level='debug')
+    biogan.logger.debug(f'Using device: {str(exec_device)}')
+    biogan.logger.debug(f'Model initialized. Number of params = {biogan.nparams_hr}')
+
+    ###################################
+    ###   Evaluator Initialization   ##
+    ###################################
+    _ppl = PPL(model_fs_folder_or_root=_models_groot, device='cpu', n_samples=128, batch_size=8)
+    _ppl(dataset=None, gen=biogan.gen, z_dim=biogan.gen.z_dim)
