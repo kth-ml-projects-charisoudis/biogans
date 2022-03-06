@@ -109,7 +109,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
             try:
                 chkpt_filepath = self.fetch_checkpoint(epoch_or_id=chkpt_epoch, step=chkpt_step)
                 self.logger.debug(f'Loading checkpoint file: {chkpt_filepath}')
-                _state_dict = torch.load(chkpt_filepath, map_location=self.device)
+                _state_dict = torch.load(chkpt_filepath, map_location=torch.device('cpu'))
                 self.load_state_dict(_state_dict)
                 if 'gforward' in _state_dict.keys():
                     self.load_gforward_state(_state_dict['gforward'])
