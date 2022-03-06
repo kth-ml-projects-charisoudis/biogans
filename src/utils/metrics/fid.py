@@ -128,9 +128,8 @@ class FID(nn.Module):
                 # Compute real embeddings
                 target_output = real_samples[target_index] if target_index else real_samples
                 #   - add 3rd channel
-                zeros_shape = list(target_output.shape)
-                zeros_shape[1] = 1
-                target_output = torch.concat((target_output, torch.zeros(*zeros_shape)), dim=1)
+                target_output = torch.concat((target_output, torch.zeros(target_output.shape[0], 1, 48, 80).cuda()),
+                                             dim=1)
                 target_output = target_output.to(self.device)
                 real_embeddings = FID.InceptionV3Cropped(FID.InceptionV3Transforms(target_output))
                 real_embeddings_list.append(real_embeddings.detach().cpu())
@@ -144,9 +143,7 @@ class FID(nn.Module):
                 #     if condition_indices is not None else gen_inputs.to(self.device)
                 fake_output = gen(*gen_inputs)
                 #   - add 3rd channel
-                zeros_shape = list(fake_output.shape)
-                zeros_shape[1] = 1
-                fake_output = torch.concat((fake_output, torch.zeros(*zeros_shape)), dim=1)
+                fake_output = torch.concat((fake_output, torch.zeros(fake_output.shape[0], 1, 48, 80).cuda()), dim=1)
                 # ATTENTION: In order to pass generator's output through Inception we must re-normalize tensor stats!
                 # Generator output images in the range [-1, 1], since it uses a Tanh() activation layer, whereas
                 # Inception v3 receives tensors with its custom normalization. Solutions: 1) Invert normalization in
