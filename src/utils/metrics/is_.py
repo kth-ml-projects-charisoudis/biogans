@@ -72,14 +72,12 @@ class IS(FID):
                 cur_batch_size = len(real_samples if condition_indices is None else real_samples[0])
 
                 # Compute predictions on fake
-                gen_inputs = [real_samples[_i].to(self.device) for _i in condition_indices] \
-                    if condition_indices else [torch.randn(cur_batch_size, z_dim, device=self.device), ]
+                gen_inputs = torch.randn(cur_batch_size, z_dim, device=self.device)
                 # gen_inputs = [gen_transforms(gen_input).to(self.device) for gen_input in gen_inputs] \
                 #     if condition_indices is not None else gen_inputs.to(self.device)
-                fake_output = gen(*gen_inputs)
-                fake_output_type = type(fake_output)
-                if fake_output_type != torch.Tensor and (type(fake_output) == tuple or type(fake_output) == list):
-                    fake_output = fake_output[-1]
+                fake_output = gen(gen_inputs)
+                #   - add 3rd channel
+                fake_output = torch.concat((fake_output, torch.zeros(fake_output.shape[0], 1, 48, 80).cuda()), dim=1)
                 # ATTENTION: In order to pass generator's output through Inception we must re-normalize tensor stats!
                 # Generator output images in the range [-1, 1], since it uses a Tanh() activation layer, whereas
                 # Inception v3 receives tensors with its custom normalization. Solutions: 1) Invert normalization in
