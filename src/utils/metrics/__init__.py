@@ -82,6 +82,9 @@ class GanEvaluator(object):
         :return: if :attr:`metric` is `None` then a `dict` of all available metrics is returned, only the given metric
                  is returned otherwise
         """
+        # Fix z_dim
+        if self.z_dim == -1:
+            self.z_dim = gen.z_dim
         # Set generator in evaluation mode
         gen = gen.eval()
         metrics_dict = {}
