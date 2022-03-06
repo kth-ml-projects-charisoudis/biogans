@@ -17,7 +17,7 @@ from torchvision.transforms import transforms
 from utils.filesystems.gdrive.remote import GDriveFolder
 
 
-def create_img_grid(images: torch.Tensor, ncols: int, nrows: Optional[int] = None, border: int = 2,
+def create_img_grid(images: torch.Tensor, ncols: Optional[int] = None, nrows: Optional[int] = None, border: int = 2,
                     black: float = 0.5, gen_transforms: Optional[transforms.Compose] = None) -> torch.Tensor:
     """
     :param (torch.Tensor) images: torch.Tensor object of shape N x (CxHxW) (similar to training tensors)
@@ -28,7 +28,6 @@ def create_img_grid(images: torch.Tensor, ncols: int, nrows: Optional[int] = Non
     :param (optional) gen_transforms:
     :return:
     """
-
     # Inverse generator transforms
     if gen_transforms is not None:
         from utils.pytorch import invert_transforms
@@ -38,9 +37,18 @@ def create_img_grid(images: torch.Tensor, ncols: int, nrows: Optional[int] = Non
         gen_transforms_inv = ToTensorOrPass()
 
     # Check nrows
-    if nrows is None:
-        nrows = int(images.shape[0] / ncols)
-    assert nrows * ncols == images.shape[0], 'nrows * ncols must be equal to the total number of images'
+    # if nrows is None:
+    #     nrows = int(images.shape[0] / ncols)
+    # assert nrows * ncols == images.shape[0], 'nrows * ncols must be equal to the total number of images'
+
+    # Split image to channels
+    images_c = []
+    for img in images:
+        images_c.append(img[0])  # red
+    for img in images:
+        images_c.append(img[1])  # green
+    nrows = 2
+    ncols = len(images)
 
     # Create a single (grouped) image for each row
     row_images = []
@@ -49,12 +57,24 @@ def create_img_grid(images: torch.Tensor, ncols: int, nrows: Optional[int] = Non
         _rheight = None
         for c in range(ncols):
             # Apply inverse image transforms to given images
-            image = gen_transforms_inv(images[r * ncols + c]).float()
+            image = images_c[r * ncols + c].float()
             if _rheight is None:
-                _rheight = image.shape[1]
-            _rlist.append(black * torch.ones(3, _rheight, border).float())  # |
+                _rheight = image.shape[0]
+            if c == 0:
+                _rlist.append(black * torch.ones(3, _rheight, border).float())  # |
+            # Real red channel
+            if r == 0:
+                image = torch.concat((image.unsqueeze(0),
+                                      torch.zeros_like(image).unsqueeze(0),
+                                      torch.zeros_like(image).unsqueeze(0)), dim=0)
+            else:
+                image = torch.concat((torch.zeros_like(image).unsqueeze(0),
+                                      image.unsqueeze(0),
+                                      torch.zeros_like(image).unsqueeze(0)), dim=0)
             _rlist.append(image)  # |□
-        _rlist.append(black * torch.ones(3, _rheight, border).float())  # |□|
+            if c == 0:
+                _rlist.append(black * torch.ones(3, _rheight, border).float())  # |□|□...
+        _rlist.append(black * torch.ones(3, _rheight, border).float())  # |□|□...□|
         row_images.append(torch.cat(_rlist, dim=2).cpu())
 
     # Join row-images to form the final image

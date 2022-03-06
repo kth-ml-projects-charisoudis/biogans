@@ -1,6 +1,7 @@
 from typing import Optional, Sequence, Tuple, Union
 
 import click
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from PIL.Image import Image
@@ -317,17 +318,12 @@ class OneClassBioGan(nn.Module, IGanGModule):
 
         # Concat images to a 2x5 grid (each row is a separate generation, the columns contain real and generated images
         # side-by-side)
-        ncols = 2
-        nrows = 2
         grid = create_img_grid(images=torch.stack([
-            torch.concat((x_0, torch.zeros((1, 48, 80))), dim=0),
-            torch.concat((g_out_0, torch.zeros((1, 48, 80))), dim=0),
-            torch.concat((x__1, torch.zeros((1, 48, 80))), dim=0),
-            torch.concat((g_out__1, torch.zeros((1, 48, 80))), dim=0),
-        ]), nrows=nrows, ncols=ncols, gen_transforms=self.gen_transforms)
+            x_0, g_out_0, g_out__1
+        ]), gen_transforms=self.gen_transforms)
 
         # Plot
-        return plot_grid(grid=grid, figsize=(ncols, nrows),
+        return plot_grid(grid=grid, figsize=(3, 2),
                          footnote_l=f'epoch={str(self.epoch).zfill(3)} | step={str(self.step).zfill(10)}',
                          footnote_r=f'gen_loss={"{0:0.3f}".format(round(np.mean(self.gen_losses).item(), 3))}, '
                                     f'disc_loss={"{0:0.3f}".format(round(np.mean(self.disc_losses).item(), 3))}')
@@ -386,3 +382,4 @@ if __name__ == '__main__':
     # Test visualization
     biogan(next(iter(dataloader)))
     biogan.visualize()
+    plt.show()
