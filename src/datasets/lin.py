@@ -236,8 +236,7 @@ class LINDataloader(DataLoader, ResumableDataLoader, ManualSeedReproducible):
 
         # Create sample instance
         seed = ManualSeedReproducible.manual_seed(42)
-        self._sampler = ResumableRandomSampler(data_source=dataset, shuffle=dl_kwargs.get('shuffle', False), seed=seed,
-                                               logger=dataset.logger)
+        self._sampler = ResumableRandomSampler(data_source=dataset, shuffle=True, seed=seed, logger=dataset.logger)
         # Instantiate dataloader
         DataLoader.__init__(self, dataset=dataset, sampler=self._sampler, **dl_kwargs)
 
@@ -245,11 +244,11 @@ class LINDataloader(DataLoader, ResumableDataLoader, ManualSeedReproducible):
         return self._sampler.get_state()
 
     def set_state(self, state: dict) -> None:
-        if 'perm_index' in state.keys():
-            # FIX: Skipping last batch size (interrupted before forward pass completed)
-            # state['perm_index'] -= self.batch_size
-            if state['perm_index'] < 0:
-                state['perm_index'] = self.__len__() + state['perm_index'] + 1
+        # if 'perm_index' in state.keys():
+        #     # FIX: Skipping last batch size (interrupted before forward pass completed)
+        #     # state['perm_index'] -= self.batch_size
+        #     if state['perm_index'] < 0:
+        #         state['perm_index'] = self.__len__() + state['perm_index'] + 1
         return self._sampler.set_state(state)
 
 
