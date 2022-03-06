@@ -484,8 +484,7 @@ class GDriveModel(FilesystemModel):
                     'batch_size': self.batch_size
                 }
                 # Check for dataloader
-                if dataloader:
-                    assert isinstance(dataloader, ResumableDataLoader), 'dataloader must implement ResumableDataLoader'
+                if dataloader and isinstance(dataloader, ResumableDataLoader):
                     state_dict['dataloader'] = dataloader.get_state()
             else:
                 raise NotImplementedError('self.state_dict() is not defined')

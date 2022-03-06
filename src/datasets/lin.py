@@ -16,12 +16,10 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms, Compose
 from tqdm.autonotebook import tqdm
 
-from datasets.samplers import ResumableRandomSampler
 from utils.command_line_logger import CommandLineLogger
-from utils.data import ManualSeedReproducible
 from utils.filesystems.gdrive import GDriveDataset
 from utils.filesystems.local import LocalCapsule, LocalFilesystem, LocalFolder
-from utils.ifaces import FilesystemFolder, ResumableDataLoader
+from utils.ifaces import FilesystemFolder
 from utils.string import to_human_readable
 
 
@@ -207,7 +205,7 @@ class LINNearestDataset(LINDataset):
         return self.nearest_neighbors.shape[0]
 
 
-class LINDataloader(DataLoader, ResumableDataLoader, ManualSeedReproducible):
+class LINDataloader(DataLoader):
     """
     LINDataloader Class:
     This class is used to load and access LIN dataset using PyTorch's DataLoader interface.
@@ -229,30 +227,14 @@ class LINDataloader(DataLoader, ResumableDataLoader, ManualSeedReproducible):
         :raises FileNotFoundError: either when the dataset is not present in local filesystem or when the
                                    `polarity_factor_info.json` is not present inside dataset's (local) root
         """
-
         # Instantiate dataset
         dataset = LINDataset(dataset_fs_folder_or_root=dataset_fs_folder_or_root, image_transforms=image_transforms,
                              train_not_test=train_not_test, which_classes=which_classes, logger=logger)
-
-        # Create sample instance
-        seed = ManualSeedReproducible.manual_seed(42)
-        self._sampler = ResumableRandomSampler(data_source=dataset, shuffle=True, seed=seed, logger=dataset.logger)
         # Instantiate dataloader
-        DataLoader.__init__(self, dataset=dataset, sampler=self._sampler, **dl_kwargs)
-
-    def get_state(self) -> dict:
-        return self._sampler.get_state()
-
-    def set_state(self, state: dict) -> None:
-        # if 'perm_index' in state.keys():
-        #     # FIX: Skipping last batch size (interrupted before forward pass completed)
-        #     # state['perm_index'] -= self.batch_size
-        #     if state['perm_index'] < 0:
-        #         state['perm_index'] = self.__len__() + state['perm_index'] + 1
-        return self._sampler.set_state(state)
+        DataLoader.__init__(self, dataset=dataset, **dl_kwargs)
 
 
-class LINNearestDataloader(DataLoader, ResumableDataLoader, ManualSeedReproducible):
+class LINNearestDataloader(DataLoader):
     """
     LINNearestDataloader Class:
     This class is used to load and access LINNearestDataset class using PyTorch's DataLoader interface.
@@ -277,23 +259,8 @@ class LINNearestDataloader(DataLoader, ResumableDataLoader, ManualSeedReproducib
         # Instantiate dataset
         dataset = LINNearestDataset(dataset_fs_folder_or_root=dataset_fs_folder_or_root, reds_only=reds_only,
                                     image_transforms=image_transforms, which_classes=which_classes, logger=logger)
-        # Create sample instance
-        seed = ManualSeedReproducible.manual_seed(42)
-        self._sampler = ResumableRandomSampler(data_source=dataset, shuffle=dl_kwargs.get('shuffle', False), seed=seed,
-                                               logger=dataset.logger)
         # Instantiate dataloader
-        DataLoader.__init__(self, dataset=dataset, sampler=self._sampler, **dl_kwargs)
-
-    def get_state(self) -> dict:
-        return self._sampler.get_state()
-
-    def set_state(self, state: dict) -> None:
-        if 'perm_index' in state.keys():
-            # FIX: Skipping last batch size (interrupted before forward pass completed)
-            # state['perm_index'] -= self.batch_size
-            if state['perm_index'] < 0:
-                state['perm_index'] = self.__len__() + state['perm_index'] + 1
-        return self._sampler.set_state(state)
+        DataLoader.__init__(self, dataset=dataset, **dl_kwargs)
 
 
 class LINScraper:
