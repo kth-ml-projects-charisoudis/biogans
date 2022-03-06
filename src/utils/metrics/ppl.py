@@ -102,6 +102,9 @@ class PPL(nn.Module):
         # Generate images.
         img_t0 = gen(zt0)
         img_t1 = gen(zt1)
+        #   - add 3rd channel
+        img_t0 = torch.concat((img_t0, torch.zeros(img_t0.shape[0], 1, 48, 80).cuda()), dim=1)
+        img_t1 = torch.concat((img_t0, torch.zeros(img_t0.shape[0], 1, 48, 80).cuda()), dim=1)
 
         # Compute individual losses and then sum up
         lpips_t0 = self.__class__.LPIPSLoss(img_t0)
@@ -140,12 +143,8 @@ class PPL(nn.Module):
                 break_after = True
             cur_batch_size = real_samples.shape[0]
 
-            if condition_indices is None:
-                # No labels --> Replace with zeros
-                labels = torch.zeros(cur_batch_size, 0).to(self.device)
-            else:
-                # Pass labels to sampler
-                labels = real_samples[condition_indices[-1]].pin_memory().to(self.device)
+            # No labels --> Replace with zeros
+            labels = torch.zeros(cur_batch_size, 0).to(self.device)
 
             x = self.sampler(labels, gen=gen)
             dist.append(x)
