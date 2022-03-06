@@ -117,16 +117,11 @@ class FID(nn.Module):
             real_embeddings_list = []
             fake_embeddings_list = []
             break_after = False
-            for real_samples in self.tqdm(dataloader, total=int(math.ceil(self.n_samples / self.batch_size)),
-                                          disable=not show_progress, desc=desc):
+            for target_output in self.tqdm(dataloader, total=int(math.ceil(self.n_samples / self.batch_size)),
+                                           disable=not show_progress, desc=desc):
                 if cur_samples >= self.n_samples:
                     break_after = True
-
-                if hasattr(gen, 'resolution'):
-                    real_samples = transforms.Resize(size=gen.resolution)(real_samples)
-
                 # Compute real embeddings
-                target_output = real_samples[target_index] if target_index else real_samples
                 #   - add 3rd channel
                 target_output = torch.concat((target_output, torch.zeros(target_output.shape[0], 1, 48, 80)), dim=1)
                 target_output = target_output.to(self.device)
@@ -136,11 +131,10 @@ class FID(nn.Module):
                 cur_batch_size = len(target_output)
 
                 # Compute fake embeddings
-                gen_inputs = [real_samples[_i].to(self.device) for _i in condition_indices] \
-                    if condition_indices else [torch.randn(cur_batch_size, z_dim, device=self.device), ]
+                gen_inputs = torch.randn(cur_batch_size, z_dim, device=self.device)
                 # gen_inputs = [gen_transforms(gen_input).to(self.device) for gen_input in gen_inputs] \
                 #     if condition_indices is not None else gen_inputs.to(self.device)
-                fake_output = gen(*gen_inputs)
+                fake_output = gen(gen_inputs)
                 #   - add 3rd channel
                 fake_output = torch.concat((fake_output, torch.zeros(fake_output.shape[0], 1, 48, 80).cuda()), dim=1)
                 # ATTENTION: In order to pass generator's output through Inception we must re-normalize tensor stats!
