@@ -43,7 +43,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
             'c_hidden': 64,
             'n_contracting_blocks': 4,
             'use_spectral_norm': False,
-            'adv_criterion': 'BCEWithLogits',
+            'adv_criterion': 'MSE',
             'output_kernel_size': (3, 5),
         },
         'disc_opt': {
