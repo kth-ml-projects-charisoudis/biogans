@@ -81,6 +81,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
         :param evaluator_kwargs: if :attr:`evaluator` is `None` these arguments must be present to initialize a new
                                  `utils.metrics.GanEvaluator` instance
         """
+        self.device = device
         # Initialize interface
         IGanGModule.__init__(self, model_fs_folder_or_root, config_id, device=device, log_level=log_level,
                              dataset_len=dataset_len, reproducible_indices=reproducible_indices,
@@ -96,13 +97,6 @@ class OneClassBioGan(nn.Module, IGanGModule):
         disc_conf = self._configuration['disc']
         disc_conf['c_in'] = 2
         self.disc = DCGanDiscriminator(**disc_conf)
-        # Move models to GPU
-        self.gen.to(device)
-        self.disc.to(device)
-        self.device = device
-        self.is_master_device = (isinstance(device, torch.device) and device.type == 'cuda' and device.index == 0) \
-                                or (isinstance(device, torch.device) and device.type == 'cpu') \
-                                or (isinstance(device, str) and device == 'cpu')
         # Define optimizers
         gen_opt_conf = self._configuration['gen_opt']
         self.gen_opt, _ = get_optimizer(self.gen, lr=gen_opt_conf['lr'])
@@ -115,7 +109,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
             try:
                 chkpt_filepath = self.fetch_checkpoint(epoch_or_id=chkpt_epoch, step=chkpt_step)
                 self.logger.debug(f'Loading checkpoint file: {chkpt_filepath}')
-                _state_dict = torch.load(chkpt_filepath, map_location='cpu')
+                _state_dict = torch.load(chkpt_filepath, map_location=self.device)
                 self.load_state_dict(_state_dict)
                 if 'gforward' in _state_dict.keys():
                     self.load_gforward_state(_state_dict['gforward'])
@@ -127,6 +121,13 @@ class OneClassBioGan(nn.Module, IGanGModule):
             self.gen = self.gen.apply(weights_init_naive)
             self.disc = self.disc.apply(weights_init_naive)
             chkpt_epoch = 0
+
+        # Move models to GPU
+        self.gen.to(device)
+        self.disc.to(device)
+        self.is_master_device = (isinstance(device, torch.device) and device.type == 'cuda' and device.index == 0) \
+                                or (isinstance(device, torch.device) and device.type == 'cpu') \
+                                or (isinstance(device, str) and device == 'cpu')
 
         # Define LR schedulers (after optimizer checkpoints have been loaded)
         if gen_opt_conf['scheduler_type']:

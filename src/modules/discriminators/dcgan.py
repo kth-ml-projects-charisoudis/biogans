@@ -125,5 +125,5 @@ if __name__ == '__main__':
     _h_in, _w_in = 48, 80
     _real = torch.randn(1, 2, _h_in, _w_in)
     _fake = torch.randn(1, 2, _h_in, _w_in)
-    _loss = _disc.get_loss(real=_real, fake=_fake)
+    _loss = _disc.get_loss_both(real=_real, fake=_fake)
     print(_loss)
