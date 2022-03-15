@@ -15,7 +15,7 @@ from modules.ifaces import IGanGModule
 from utils.ifaces import FilesystemFolder
 from utils.metrics import GanEvaluator
 from utils.plot import create_img_grid, plot_grid
-from utils.train import get_optimizer, weights_init_naive, get_optimizer_lr_scheduler, set_optimizer_lr
+from utils.train import get_optimizer, weights_init_naive, set_optimizer_lr
 
 
 class OneClassBioGan(nn.Module, IGanGModule):
@@ -88,6 +88,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
                              evaluator=evaluator, **evaluator_kwargs)
         # Instantiate torch.nn.Module class
         nn.Module.__init__(self)
+
         # Define BioGAN model
         #   - generator
         gen_conf = self._configuration['gen']
@@ -97,6 +98,14 @@ class OneClassBioGan(nn.Module, IGanGModule):
         disc_conf = self._configuration['disc']
         disc_conf['c_in'] = 2
         self.disc = DCGanDiscriminator(**disc_conf)
+
+        # Move models to {C,G,T}PU
+        self.gen.to(device)
+        self.disc.to(device)
+        self.is_master_device = (isinstance(device, torch.device) and device.type == 'cuda' and device.index == 0) \
+                                or (isinstance(device, torch.device) and device.type == 'cpu') \
+                                or (isinstance(device, str) and device == 'cpu')
+
         # Define optimizers
         gen_opt_conf = self._configuration['gen_opt']
         self.gen_opt, _ = get_optimizer(self.gen, lr=gen_opt_conf['lr'])
@@ -109,7 +118,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
             try:
                 chkpt_filepath = self.fetch_checkpoint(epoch_or_id=chkpt_epoch, step=chkpt_step)
                 self.logger.debug(f'Loading checkpoint file: {chkpt_filepath}')
-                _state_dict = torch.load(chkpt_filepath, map_location=self.device)
+                _state_dict = torch.load(chkpt_filepath, map_location='cpu')
                 self.load_state_dict(_state_dict)
                 if 'gforward' in _state_dict.keys():
                     self.load_gforward_state(_state_dict['gforward'])
@@ -122,32 +131,27 @@ class OneClassBioGan(nn.Module, IGanGModule):
             self.disc = self.disc.apply(weights_init_naive)
             chkpt_epoch = 0
 
+        # # Define LR schedulers (after optimizer checkpoints have been loaded)
+        # if gen_opt_conf['scheduler_type']:
+        #     if gen_opt_conf['scheduler_type'] == 'cyclic':
+        #         self.gen_opt_lr_scheduler = get_optimizer_lr_scheduler(
+        #             self.gen_opt, schedule_type=str(gen_opt_conf['scheduler_type']), base_lr=0.1 * gen_opt_conf['lr'],
+        #             max_lr=gen_opt_conf['lr'], step_size_up=2 * dataset_len if evaluator else 1000, mode='exp_range',
+        #             gamma=0.9, cycle_momentum=False,
+        #             last_epoch=chkpt_epoch if 'initial_lr' in self.gen_opt.param_groups[0].keys() else -1)
+        #     else:
+        #         self.gen_opt_lr_scheduler = get_optimizer_lr_scheduler(self.gen_opt,
+        #                                                                schedule_type=gen_opt_conf['scheduler_type'])
+        # else:
+        #     self.gen_opt_lr_scheduler = None
+        # if disc_opt_conf['scheduler_type']:
+        #     self.disc_opt_lr_scheduler = get_optimizer_lr_scheduler(self.disc_opt,
+        #                                                             schedule_type=disc_opt_conf['scheduler_type'])
+        # else:
+        #     self.disc_opt_lr_scheduler = None
 
-        # Move models to GPU
-        self.gen.to(device)
-        self.disc.to(device)
-        self.is_master_device = (isinstance(device, torch.device) and device.type == 'cuda' and device.index == 0) \
-                                or (isinstance(device, torch.device) and device.type == 'cpu') \
-                                or (isinstance(device, str) and device == 'cpu')
-
-        # Define LR schedulers (after optimizer checkpoints have been loaded)
-        if gen_opt_conf['scheduler_type']:
-            if gen_opt_conf['scheduler_type'] == 'cyclic':
-                self.gen_opt_lr_scheduler = get_optimizer_lr_scheduler(
-                    self.gen_opt, schedule_type=str(gen_opt_conf['scheduler_type']), base_lr=0.1 * gen_opt_conf['lr'],
-                    max_lr=gen_opt_conf['lr'], step_size_up=2 * dataset_len if evaluator else 1000, mode='exp_range',
-                    gamma=0.9, cycle_momentum=False,
-                    last_epoch=chkpt_epoch if 'initial_lr' in self.gen_opt.param_groups[0].keys() else -1)
-            else:
-                self.gen_opt_lr_scheduler = get_optimizer_lr_scheduler(self.gen_opt,
-                                                                       schedule_type=gen_opt_conf['scheduler_type'])
-        else:
-            self.gen_opt_lr_scheduler = None
-        if disc_opt_conf['scheduler_type']:
-            self.disc_opt_lr_scheduler = get_optimizer_lr_scheduler(self.disc_opt,
-                                                                    schedule_type=disc_opt_conf['scheduler_type'])
-        else:
-            self.disc_opt_lr_scheduler = None
+        self.gen_opt_lr_scheduler = None
+        self.disc_opt_lr_scheduler = None
 
         # Save transforms for visualizer
         if gen_transforms is not None:
@@ -156,6 +160,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
         # Initialize params
         self.g_out = None
         self.x = None
+        self.device = device
 
     def load_configuration(self, configuration: dict) -> None:
         IGanGModule.load_configuration(self, configuration)
@@ -182,8 +187,10 @@ class OneClassBioGan(nn.Module, IGanGModule):
         # Load model checkpoints
         # noinspection PyTypeChecker
         self.gen.load_state_dict(state_dict['gen'])
-        self.gen_opt.load_state_dict(state_dict['gen_opt'])
+        self.gen.unfreeze(force=True)
         self.disc.load_state_dict(state_dict['disc'])
+        self.disc.unfreeze(force=True)
+        self.gen_opt.load_state_dict(state_dict['gen_opt'])
         self.disc_opt.load_state_dict(state_dict['disc_opt'])
         self._nparams = state_dict['nparams']
         # Update latest metrics with checkpoint's metrics
