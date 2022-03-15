@@ -15,7 +15,7 @@ from modules.ifaces import IGanGModule
 from utils.ifaces import FilesystemFolder
 from utils.metrics import GanEvaluator
 from utils.plot import create_img_grid, plot_grid
-from utils.train import get_optimizer, weights_init_naive, set_optimizer_lr
+from utils.train import get_optimizer, set_optimizer_lr
 
 
 class OneClassBioGan(nn.Module, IGanGModule):
@@ -125,11 +125,11 @@ class OneClassBioGan(nn.Module, IGanGModule):
             except FileNotFoundError as e:
                 self.logger.critical(str(e))
                 chkpt_epoch = None
-        if not chkpt_epoch:
-            # Initialize weights with small values
-            self.gen = self.gen.apply(weights_init_naive)
-            self.disc = self.disc.apply(weights_init_naive)
-            chkpt_epoch = 0
+        # if not chkpt_epoch:
+        #     # Initialize weights with small values
+        #     self.gen = self.gen.apply(weights_init_naive)
+        #     self.disc = self.disc.apply(weights_init_naive)
+        #     chkpt_epoch = 0
 
         # # Define LR schedulers (after optimizer checkpoints have been loaded)
         # if gen_opt_conf['scheduler_type']:
