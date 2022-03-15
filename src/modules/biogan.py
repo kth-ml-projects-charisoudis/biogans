@@ -187,10 +187,10 @@ class OneClassBioGan(nn.Module, IGanGModule):
         # Load model checkpoints
         # noinspection PyTypeChecker
         self.gen.load_state_dict(state_dict['gen'])
-        self.gen.unfreeze(force=True)
+        # self.gen.unfreeze(force=True)
         self.disc.load_state_dict(state_dict['disc'])
-        self.disc.unfreeze(force=True)
-        self.gen_opt.load_state_dict(state_dict['gen_opt'])
+        # self.disc.unfreeze(force=True)
+        # self.gen_opt.load_state_dict(state_dict['gen_opt'])
         self.disc_opt.load_state_dict(state_dict['disc_opt'])
         self._nparams = state_dict['nparams']
         # Update latest metrics with checkpoint's metrics
