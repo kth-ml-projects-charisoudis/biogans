@@ -1,5 +1,6 @@
 import math
 import os
+import random
 from typing import Any, Optional, Tuple
 
 import humanize
@@ -8,6 +9,7 @@ import scipy.optimize
 import torch
 import torch.nn as nn
 import torchvision.transforms.functional as f
+from PIL import Image
 from torch.autograd import Function
 from torch.nn import Module
 from torchvision.transforms import transforms
@@ -260,6 +262,29 @@ class MatrixSquareRoot(Function):
             grad_mat_sqrt = scipy.linalg.solve_sylvester(mat_sqrt, mat_sqrt, gm)
             grad_input = torch.from_numpy(grad_mat_sqrt).to(grad_output)
         return grad_input
+
+
+class RandomVerticalFlip(object):
+    """
+    Randomly vertically flips the given PIL.Image with a probability of 0.5
+    Source: https://github.com/aosokin/biogans
+    """
+
+    def __call__(self, img):
+        if random.random() < 0.5:
+            return img.transpose(Image.FLIP_TOP_BOTTOM)
+        return img
+
+
+def pad_channels(output, nc, value=-1.0):
+    if output.size(1) < nc:
+        padded_channels = value * torch.ones(output.size(0), nc - output.size(1), output.size(2), output.size(3))
+        if isinstance(output, torch.autograd.Variable):
+            padded_channels = torch.autograd.Variable(padded_channels, requires_grad=False)
+        if output.is_cuda:
+            padded_channels = padded_channels.cuda()
+        output = torch.cat((output, padded_channels), 1)
+    return output
 
 
 class ReceptiveFieldCalculator:

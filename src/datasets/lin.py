@@ -13,13 +13,15 @@ from matplotlib import pyplot as plt
 from torch import Tensor
 # noinspection PyProtectedMember
 from torch.utils.data import Dataset, DataLoader
-from torchvision.transforms import transforms, Compose
+from torchvision import transforms
+from torchvision.transforms import Compose
 from tqdm.autonotebook import tqdm
 
 from utils.command_line_logger import CommandLineLogger
 from utils.filesystems.gdrive import GDriveDataset
 from utils.filesystems.local import LocalCapsule, LocalFilesystem, LocalFolder
 from utils.ifaces import FilesystemFolder
+from utils.pytorch import RandomVerticalFlip
 from utils.string import to_human_readable
 
 
@@ -108,7 +110,15 @@ class LINDataset(Dataset, GDriveDataset):
 
     @transforms.setter
     def transforms(self, t: Optional[Compose] = None) -> None:
-        self._transforms = t if t else transforms.ToTensor()
+        if t is None:
+            self._transforms = transforms.Compose([
+                transforms.RandomHorizontalFlip(),
+                RandomVerticalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(0.5, 0.5)
+            ])
+        else:
+            self._transforms = t
 
     def __getitem__(self, index: int) -> Union[Tuple[Tensor, str], Tensor]:
         """
@@ -126,8 +136,9 @@ class LINDataset(Dataset, GDriveDataset):
             return self.__getitem__(index + 1)
         # Apply transforms
         if self.transforms:
-            cell_img = self.transforms(cell_img)
-            cell_img = cell_img[:2, :, :]  # 3rd channel (blue) is 0
+            cell_img_tensor = self.transforms(cell_img)
+            cell_img.close()
+            cell_img = cell_img_tensor[:2, :, :]  # 3rd channel (blue) is 0
         if self.return_path:
             return cell_img, os.path.join(self.polarity_factors_info['path'], cell_img_path)
         return cell_img

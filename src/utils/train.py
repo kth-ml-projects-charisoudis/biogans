@@ -1,3 +1,5 @@
+import os
+import sys
 from typing import Union, Optional, Sized, Tuple
 
 import numpy as np
@@ -70,6 +72,67 @@ def get_optimizer_lr_scheduler(optimizer: Optimizer, schedule_type: str, **kwarg
         'cyclic': CyclicLR,
     }
     return switcher[schedule_type](optimizer=optimizer, **kwargs)
+
+
+def load_model_chkpt(model: nn.Module, model_name: str, step: Union[str, int] = 'latest',
+                     model_opt: Optional[Optimizer] = None, dict_key: Optional[str] = None,
+                     chkpts_root: Optional[str] = None, state_dict: Optional[dict] = None,
+                     gdmc=None) -> Tuple[dict, Optional[int], Optional[int]]:
+    """
+    Load model (and model's optimizer) checkpoint. The checkpoint is searched in given checkpoints root (absolute path)
+    and if one found it is loaded. The function also returns the checkpoint step as well as
+    :param (nn.Module) model: the model as a torch.nn.Module instance
+    :param (str) model_name: name of model which is also model checkpoint's file name prefix
+    :param (str or int) step: step of checkpoint to load or 'latest' to load latest model checkpoint
+    :param (optional) dict_key: name of the key of state dict regarding the model's state, or None if only one model'
+                                state is saved in the state dict
+    :param (optional) model_opt: model's optimizer instance
+    :param (optional) chkpts_root: absolute path to model checkpoints directory
+    :param (optional) state_dict: state dict (used to avoid duplicate calls)
+    :param (optional) gdmc: utils.gdrive.GDriveModelCheckpoints object to interact with GoogleDrive API in order to
+                            fetch model checkpoint
+    :return: a tuple of the form (<state_dict>, <checkpoint_step>, <checkpoint_batch_size>)
+    """
+    # Check if running inside Colab or Kaggle (auto prefixing)
+    chkpt_path = None
+    if 'gdrive' == chkpts_root and gdmc:
+        result, chkpt_path = gdmc.download_model_checkpoint(model_name=model_name, step=step, in_parallel=False)
+    elif 'google.colab' in sys.modules or 'COLAB_GPU' in os.environ:
+        chkpts_root = f'/content/drive/MyDrive/Model Checkpoints'
+    elif 'KAGGLE_KERNEL_RUN_TYPE' in os.environ:
+        chkpts_root = f'/kaggle/working/Model Checkpoints'
+    elif not chkpts_root:
+        chkpts_root: str = '/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.checkpoints'
+    assert os.path.exists(chkpts_root) and os.path.isdir(chkpts_root), 'Checkpoints dir not existent or not readable'
+    assert model_opt is None or dict_key is not None, 'model_opt and dict_key cannot be None simultaneously'
+
+    chkpt_info_parts = ['None']
+    if not state_dict:
+        if not chkpt_path:
+            # Find correct checkpoint path
+            _, _, chkpt_files = next(os.walk(chkpts_root))
+            chkpt_files = sorted([_f for _f in chkpt_files if _f.lower().startswith(model_name.lower())], reverse=True)
+            assert len(chkpt_files) > 0, 'No model checkpoints found in given checkpoints dir'
+            chkpt_file = chkpt_files[0]
+            chkpt_info_parts = chkpt_file.replace(model_name, '').lstrip('_').replace('.pth', '').split('_')
+            chkpt_path = os.path.join(chkpts_root, chkpt_file)
+
+        # Load checkpoint
+        state_dict = torch.load(chkpt_path, map_location='cpu')
+
+    assert dict_key is None or dict_key in state_dict.keys(), f'dict_key={str(dict_key)} not found in state_dict.keys()'
+    model.load_state_dict(state_dict[dict_key] if dict_key else state_dict)
+    if model_opt:
+        assert f'{dict_key}_opt' in state_dict.keys(), '$dict_key$_opt not found in state_dict.keys()'
+        model_opt.load_state_dict(state_dict[f'{dict_key}_opt'])
+
+    # Find epoch/current step
+    chkpt_step = None
+    chkpt_batch_size = None
+    if len(chkpt_info_parts) == 2:
+        chkpt_step = int(chkpt_info_parts[0])
+        chkpt_batch_size = int(chkpt_info_parts[1])
+    return state_dict, chkpt_step, chkpt_batch_size
 
 
 def set_optimizer_lr(optimizer: Optimizer, new_lr: float) -> None:

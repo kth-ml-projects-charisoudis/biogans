@@ -41,6 +41,9 @@ def create_img_grid(images: torch.Tensor, ncols: Optional[int] = None, nrows: Op
     #     nrows = int(images.shape[0] / ncols)
     # assert nrows * ncols == images.shape[0], 'nrows * ncols must be equal to the total number of images'
 
+    for img_i in range(len(images)):
+        images[img_i] = gen_transforms_inv(images[img_i])
+
     # Split image to channels
     images_c = []
     for img in images:

@@ -15,7 +15,7 @@ from modules.ifaces import IGanGModule
 from utils.ifaces import FilesystemFolder
 from utils.metrics import GanEvaluator
 from utils.plot import create_img_grid, plot_grid
-from utils.train import get_optimizer, set_optimizer_lr
+from utils.train import get_optimizer, set_optimizer_lr, weights_init_naive, get_optimizer_lr_scheduler
 
 
 class OneClassBioGan(nn.Module, IGanGModule):
@@ -102,9 +102,6 @@ class OneClassBioGan(nn.Module, IGanGModule):
         # Move models to {C,G,T}PU
         self.gen.to(device)
         self.disc.to(device)
-        self.is_master_device = (isinstance(device, torch.device) and device.type == 'cuda' and device.index == 0) \
-                                or (isinstance(device, torch.device) and device.type == 'cpu') \
-                                or (isinstance(device, str) and device == 'cpu')
 
         # Define optimizers
         gen_opt_conf = self._configuration['gen_opt']
@@ -125,30 +122,30 @@ class OneClassBioGan(nn.Module, IGanGModule):
             except FileNotFoundError as e:
                 self.logger.critical(str(e))
                 chkpt_epoch = None
-        # if not chkpt_epoch:
-        #     # Initialize weights with small values
-        #     self.gen = self.gen.apply(weights_init_naive)
-        #     self.disc = self.disc.apply(weights_init_naive)
-        #     chkpt_epoch = 0
+        if not chkpt_epoch:
+            # Initialize weights with small values
+            self.gen = self.gen.apply(weights_init_naive)
+            self.disc = self.disc.apply(weights_init_naive)
+            chkpt_epoch = 0
 
-        # # Define LR schedulers (after optimizer checkpoints have been loaded)
-        # if gen_opt_conf['scheduler_type']:
-        #     if gen_opt_conf['scheduler_type'] == 'cyclic':
-        #         self.gen_opt_lr_scheduler = get_optimizer_lr_scheduler(
-        #             self.gen_opt, schedule_type=str(gen_opt_conf['scheduler_type']), base_lr=0.1 * gen_opt_conf['lr'],
-        #             max_lr=gen_opt_conf['lr'], step_size_up=2 * dataset_len if evaluator else 1000, mode='exp_range',
-        #             gamma=0.9, cycle_momentum=False,
-        #             last_epoch=chkpt_epoch if 'initial_lr' in self.gen_opt.param_groups[0].keys() else -1)
-        #     else:
-        #         self.gen_opt_lr_scheduler = get_optimizer_lr_scheduler(self.gen_opt,
-        #                                                                schedule_type=gen_opt_conf['scheduler_type'])
-        # else:
-        #     self.gen_opt_lr_scheduler = None
-        # if disc_opt_conf['scheduler_type']:
-        #     self.disc_opt_lr_scheduler = get_optimizer_lr_scheduler(self.disc_opt,
-        #                                                             schedule_type=disc_opt_conf['scheduler_type'])
-        # else:
-        #     self.disc_opt_lr_scheduler = None
+        # Define LR schedulers (after optimizer checkpoints have been loaded)
+        if gen_opt_conf['scheduler_type']:
+            if gen_opt_conf['scheduler_type'] == 'cyclic':
+                self.gen_opt_lr_scheduler = get_optimizer_lr_scheduler(
+                    self.gen_opt, schedule_type=str(gen_opt_conf['scheduler_type']), base_lr=0.1 * gen_opt_conf['lr'],
+                    max_lr=gen_opt_conf['lr'], step_size_up=2 * dataset_len if evaluator else 1000, mode='exp_range',
+                    gamma=0.9, cycle_momentum=False,
+                    last_epoch=chkpt_epoch if 'initial_lr' in self.gen_opt.param_groups[0].keys() else -1)
+            else:
+                self.gen_opt_lr_scheduler = get_optimizer_lr_scheduler(self.gen_opt,
+                                                                       schedule_type=gen_opt_conf['scheduler_type'])
+        else:
+            self.gen_opt_lr_scheduler = None
+        if disc_opt_conf['scheduler_type']:
+            self.disc_opt_lr_scheduler = get_optimizer_lr_scheduler(self.disc_opt,
+                                                                    schedule_type=disc_opt_conf['scheduler_type'])
+        else:
+            self.disc_opt_lr_scheduler = None
 
         self.gen_opt_lr_scheduler = None
         self.disc_opt_lr_scheduler = None
@@ -187,10 +184,8 @@ class OneClassBioGan(nn.Module, IGanGModule):
         # Load model checkpoints
         # noinspection PyTypeChecker
         self.gen.load_state_dict(state_dict['gen'])
-        # self.gen.unfreeze(force=True)
+        self.gen_opt.load_state_dict(state_dict['gen_opt'])
         self.disc.load_state_dict(state_dict['disc'])
-        # self.disc.unfreeze(force=True)
-        # self.gen_opt.load_state_dict(state_dict['gen_opt'])
         self.disc_opt.load_state_dict(state_dict['disc_opt'])
         self._nparams = state_dict['nparams']
         # Update latest metrics with checkpoint's metrics
@@ -199,6 +194,16 @@ class OneClassBioGan(nn.Module, IGanGModule):
         self.logger.debug(f'State dict loaded. Keys: {tuple(state_dict.keys())}')
         for _k in [_k for _k in state_dict.keys() if _k not in ('gen', 'gen_opt', 'disc', 'disc_opt', 'configuration')]:
             self.other_state_dicts[_k] = state_dict[_k]
+
+        # def reset_bn(_m):
+        #     if isinstance(_m, nn.BatchNorm2d):
+        #         _m.reset_running_stats()
+        #
+        # # Reset BN stats
+        # self.gen.apply(reset_bn)
+        # self.disc.apply(reset_bn)
+        # self.gen_opt.state = collections.defaultdict(dict)
+        # self.disc_opt.state = collections.defaultdict(dict)
 
     def state_dict(self, *args, **kwargs) -> dict:
         """
@@ -232,8 +237,8 @@ class OneClassBioGan(nn.Module, IGanGModule):
         """
         # Update gdrive model state
         batch_size = x.shape[0]
-        if self.is_master_device:
-            self.gforward(batch_size)
+        self.gforward(batch_size)
+        self.gen_opt.zero_grad()
 
         ##########################################
         ########   Update Discriminator   ########
@@ -270,11 +275,10 @@ class OneClassBioGan(nn.Module, IGanGModule):
                     self.gen_opt_lr_scheduler.step()
 
         # Save for visualization
-        if self.is_master_device:
-            self.g_out = g_out[::len(g_out) - 1].detach().cpu()
-            self.x = x[::len(x) - 1].detach().cpu()
-            self.gen_losses.append(gen_loss.item())
-            self.disc_losses.append(disc_loss.item())
+        self.g_out = g_out[::len(g_out) - 1].detach().cpu()
+        self.x = x[::len(x) - 1].detach().cpu()
+        self.gen_losses.append(gen_loss.item())
+        self.disc_losses.append(disc_loss.item())
 
         return disc_loss, gen_loss
 
@@ -318,8 +322,13 @@ class OneClassBioGan(nn.Module, IGanGModule):
         #                             f'disc_loss={"{0:0.3f}".format(round(np.mean(self.disc_losses).item(), 3))}')
         raise NotImplementedError('Cannot really implement reproducibility in Noise-to-Image context.')
 
-    def visualize(self, reproducible: bool = False) -> Image:
+    def visualize(self, reproducible: bool = False, dl=None) -> Image:
         # Get first & last sample from saved images in self
+        if self.x is None or self.g_out is None:
+            assert dl is not None
+            self.x = next(iter(dl)).detach().cpu()
+            with torch.no_grad():
+                self.g_out = self.gen(self.gen.get_random_z(batch_size=self.x.shape[0], device=self.device)).cpu()
         x_0 = self.x[0]
         g_out_0 = self.g_out[0]
         x__1 = self.x[-1]
