@@ -151,7 +151,8 @@ class TestTrainUtils(unittest.TestCase):
         # Load checkpoint
         biogan2 = OneClassBioGan(model_fs_folder_or_root=self.models_groot, config_id='default',
                                  chkpt_epoch=88, chkpt_step=biogan.step, device=biogan.device,
-                                 dataset_len=len(self.dataloader.dataset), log_level='debug')
+                                 dataset_len=len(self.dataloader.dataset), log_level='debug',
+                                 gen_transforms=self.dataloader.transforms)
         biogan2.logger = biogan.logger
 
         biogan.update_lr(0.0, 0.0)

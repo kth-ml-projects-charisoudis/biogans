@@ -731,12 +731,12 @@ class Freezable(metaclass=abc.ABCMeta):
         :return: self instance
         """
         self.freeze()
-        if hasattr(self, 'eval'):
-            self.eval()
+        # if hasattr(self, 'eval'):
+        #     self.eval()
         yield self
         self.unfreeze()
-        if hasattr(self, 'train'):
-            self.train()
+        # if hasattr(self, 'train'):
+        #     self.train()
 
 
 class BalancedFreezable(Freezable):

@@ -8,7 +8,6 @@ import numpy as np
 import scipy.optimize
 import torch
 import torch.nn as nn
-import torchvision.transforms.functional as f
 from PIL import Image
 from torch.autograd import Function
 from torch.nn import Module
@@ -371,7 +370,20 @@ class UnNormalize(torch.nn.Module):
         self.mean = mean
         self.std = std
         self.inplace = inplace
+        self.inverse = transforms.Compose([
+            transforms.Normalize(
+                np.zeros_like(np.asarray(mean)),
+                np.reciprocal(
+                    np.multiply(std, np.ones_like(np.asarray(std)))
+                ),
+                inplace=inplace
+            ),
+            transforms.Normalize(
+                -1 * np.asarray(mean),
+                np.ones_like(np.asarray(std)),
+                inplace=inplace
+            )
+        ])
 
     def forward(self, tensor: torch.Tensor) -> torch.Tensor:
-        tensor = f.normalize(tensor, list(np.zeros_like(self.mean)), list(np.reciprocal(self.std)), self.inplace)
-        return f.normalize(tensor, list(-1 * np.asarray(self.mean)), list(np.ones_like(self.std)), self.inplace)
+        return self.inverse(tensor)

@@ -53,6 +53,12 @@ class OneClassBioGan(nn.Module, IGanGModule):
         }
     }
 
+    PROTEIN_CLASS = 'Alp14'
+
+    @classmethod
+    def version(cls) -> str:
+        return cls.PROTEIN_CLASS
+
     def __init__(self, model_fs_folder_or_root: FilesystemFolder, config_id: Optional[str] = None,
                  chkpt_epoch: Optional[int or str] = None, chkpt_step: Optional[int] = None,
                  device: torch.device or str = 'cpu', gen_transforms: Optional[Compose] = None, log_level: str = 'info',
@@ -393,7 +399,8 @@ if __name__ == '__main__':
     except NameError:
         _chkpt_step = None
     biogan = OneClassBioGan(model_fs_folder_or_root=_models_groot, config_id='default', dataset_len=len(dataset),
-                            chkpt_epoch=_chkpt_step, evaluator=evaluator, device=exec_device, log_level='debug')
+                            chkpt_epoch=_chkpt_step, evaluator=evaluator, device=exec_device, log_level='debug',
+                            gen_transforms=dataloader.transforms)
     biogan.logger.debug(f'Using device: {str(exec_device)}')
     biogan.logger.debug(f'Model initialized. Number of params = {biogan.nparams_hr}')
 

@@ -243,6 +243,7 @@ class LINDataloader(DataLoader):
                              train_not_test=train_not_test, which_classes=which_classes, logger=logger)
         # Instantiate dataloader
         DataLoader.__init__(self, dataset=dataset, **dl_kwargs)
+        self.transforms = dataset.transforms
 
 
 class LINNearestDataloader(DataLoader):
