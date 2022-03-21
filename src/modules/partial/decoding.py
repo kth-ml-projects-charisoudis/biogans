@@ -5,39 +5,82 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+from modules.partial.encoding import Conv2dSeparable
+
+
+class ConvTranspose2dSeparable(nn.Module):
+    def __init__(self, c_in: int, c_out: int, kernel_size: int, stride: int = 1, padding: int = 0, bias=True,
+                 red_portion=0.5):
+        """
+        ConvTranspose2dSeparable class constructor.
+        :param int c_in: see nn.ConvTranspose2d
+        :param int c_out: see nn.ConvTranspose2d
+        :param int kernel_size: see nn.ConvTranspose2d
+        :param int stride: see nn.ConvTranspose2d
+        :param int padding: see nn.ConvTranspose2d
+        :param bool bias: see nn.ConvTranspose2d
+        :param float red_portion: portion of red channels (e.g. 0.5 for 2-channel outputs, or 0.166 for 7-channel outs)
+        """
+        super(ConvTranspose2dSeparable, self).__init__()
+        self.c_in_red = int(c_in * red_portion)
+        self.c_out_red = int(c_out * red_portion)
+        self.conv_red = nn.ConvTranspose2d(self.c_in_red, self.c_out_red, kernel_size, stride, padding, bias=bias)
+        self.c_out_green = c_out - self.c_out_red
+        self.conv_green = nn.ConvTranspose2d(c_in, self.c_out_green, kernel_size, stride, padding, bias=bias)
+
+    def forward(self, x: torch.Tensor):
+        x_red = x[:, :self.c_in_red, :, :]
+        y_red = self.conv_red(x_red)
+        y_green = self.conv_green(x)
+        return torch.cat((y_red, y_green), dim=1)
+
 
 class ExpandingBlock(nn.Module):
     """
     ExpandingBlock Class:
-    Performs a convolutional transpose operation in order to up-sample, with an optional instance norm
-    Values:
-        c_in: the number of channels to expect from a given input
+    Performs a convolutional transpose operation in order to up-sample, with an optional norm and non-linearity
+    activation functions.
     """
 
     def __init__(self, c_in: int, use_norm: bool = True, kernel_size: int = 3, activation: Optional[str] = 'relu',
                  output_padding: int = 1, stride: int = 2, padding: int = 1, c_out: Optional[int] = None,
-                 norm_type: str = 'instance', use_dropout: bool = False, use_skip: bool = False):
+                 norm_type: str = 'instance', use_dropout: bool = False, use_skip: bool = False, bias: bool = True,
+                 red_portion: Optional[float] = None):
         """
         ExpandingBlock class constructor.
-        :param (int) c_in: number of input channels
-        :param (bool) use_norm: indicates if InstanceNormalization2d is applied or not after Conv2d layer
-        :param (int) kernel_size: filter (kernel) size of torch.nn.Conv2d
-        :param (str) activation: type of activation function used (supported: 'relu', 'lrelu')
-        :param (int) output_padding: output_padding of torch.nn.ConvTranspose2d
-        :param (int) stride: stride of torch.nn.ConvTranspose2d (defaults to 2 for our needs)
-        :param (int) padding: padding of torch.nn.ConvTranspose2d
-        :param (str) c_out: number of output channels
-        :param (str) norm_type: available types are 'batch', 'instance', 'pixel', 'layer'
-        :param (bool) use_dropout: set to True to add a `nn.Dropout()` layer with probability of 0.2
-        :param (bool) use_skip: set to True to enable UNET-like behaviour
+        :param int c_in: number of input channels
+        :param bool use_norm: indicates if InstanceNormalization2d is applied or not after Conv2d layer
+        :param int kernel_size: filter (kernel) size of torch.nn.Conv2d
+        :param str activation: type of activation function used (supported: 'relu', 'lrelu')
+        :param int output_padding: output_padding of torch.nn.ConvTranspose2d
+        :param int stride: stride of torch.nn.ConvTranspose2d (defaults to 2 for our needs)
+        :param int padding: padding of torch.nn.ConvTranspose2d
+        :param str c_out: number of output channels
+        :param str norm_type: available types are 'batch', 'instance', 'pixel', 'layer'
+        :param bool use_dropout: set to True to add a `nn.Dropout()` layer with probability of 0.2
+        :param bool use_skip: set to True to enable UNET-like behaviour
+        :param bool bias: see nn.Conv{Transpose}2d
+        :param (optional) red_portion: if set, Separable architecture is employed instead of the original one
         """
         super(ExpandingBlock, self).__init__()
         c_out = c_in // 2 if c_out is None else c_out
 
         # Upscaling layer using transposed convolution
         # noinspection PyTypeChecker
-        self.upscale = nn.ConvTranspose2d(c_in, c_out, kernel_size=kernel_size, stride=stride, padding=padding,
-                                          output_padding=output_padding)
+        if c_out != c_in:
+            if red_portion is None:
+                self.upscale = nn.ConvTranspose2d(c_in, c_out, kernel_size=kernel_size, stride=stride, padding=padding,
+                                                  output_padding=output_padding, bias=bias)
+            else:
+                self.upscale = ConvTranspose2dSeparable(c_in, c_out, kernel_size, stride=stride, padding=padding,
+                                                        bias=bias, red_portion=red_portion)
+        else:
+            if red_portion is None:
+                self.upscale = nn.Conv2d(c_in, c_out, kernel_size=kernel_size, stride=stride, padding=padding,
+                                         bias=bias)
+            else:
+                self.upscale = Conv2dSeparable(c_in, c_out, kernel_size, stride=stride, padding=padding, bias=bias,
+                                               red_portion=red_portion)
         _layers = []
         if use_skip:
             # noinspection PyTypeChecker
@@ -56,8 +99,8 @@ class ExpandingBlock(nn.Module):
             _layers.append(nn.Dropout2d(p=0.2))
         if activation is not None:
             activations_switcher = {
-                'relu': nn.ReLU(),
-                'lrelu': nn.LeakyReLU(0.2),
+                'relu': nn.ReLU(inplace=True),
+                'lrelu': nn.LeakyReLU(0.2, inplace=True),
                 'tanh': nn.Tanh(),
                 'sigmoid': nn.Sigmoid(),
             }
@@ -139,21 +182,31 @@ class ChannelsProjectLayer(nn.Module):
     """
 
     def __init__(self, c_in: int, c_out: int, use_spectral_norm: bool = False, padding: int = 0,
-                 kernel_size: int or tuple = 1, stride: int or tuple = 1):
+                 kernel_size: int or tuple = 1, stride: int or tuple = 1, bias: bool = True,
+                 red_portion: Optional[float] = None):
         """
         ChannelsProjectLayer class constructor.
-        :param (int) c_in: number of input channels
-        :param (int) c_out: number of output channels
-        :param (bool) use_spectral_norm: set to True to add a spectral normalization layer after the Conv2d
-        :param (int) padding: nn.Conv2d's padding argument
-        :param (int) kernel_size: filter (kernel) size of torch.nn.Conv2d
-        :param (int) stride: stride of torch.nn.ConvTranspose2d (defaults to 2 for our needs)
+        :param int c_in: number of input channels
+        :param int c_out: number of output channels
+        :param bool use_spectral_norm: set to True to add a spectral normalization layer after the Conv2d
+        :param int padding: nn.Conv2d's padding argument
+        :param int kernel_size: filter (kernel) size of torch.nn.Conv2d
+        :param int stride: stride of torch.nn.ConvTranspose2d (defaults to 2 for our needs)
+        :param bool bias: use bias in conv layers
+        :param (optional) red_portion: if set, Separable architecture is employed instead of the original one
         """
         super(ChannelsProjectLayer, self).__init__()
         # noinspection PyTypeChecker
-        self.feature_map_block = nn.Conv2d(c_in, c_out, kernel_size=kernel_size, stride=stride, padding=padding)
-        if use_spectral_norm:
-            self.feature_map_block = nn.utils.spectral_norm(self.feature_map_block)
+        if red_portion is None:
+            self.feature_map_block = nn.Conv2d(c_in, c_out, kernel_size=kernel_size, stride=stride, padding=padding,
+                                               bias=bias)
+            if use_spectral_norm:
+                self.feature_map_block = nn.utils.spectral_norm(self.feature_map_block)
+        else:
+            self.feature_map_block = Conv2dSeparable(c_in, c_out, kernel_size=kernel_size, stride=stride,
+                                                     padding=padding, bias=bias, red_portion=red_portion)
+            self.feature_map_block.conv_red = nn.utils.spectral_norm(self.feature_map_block.conv_red)
+            self.feature_map_block.conv_green = nn.utils.spectral_norm(self.feature_map_block.conv_green)
 
     def forward(self, x: Tensor) -> Tensor:
         """

@@ -33,6 +33,8 @@ class OneClassBioGan(nn.Module, IGanGModule):
             'z_dim': 100,
             'norm_type': 'batch',
             'c_hidden': 512,
+            'n_extra_layers': 0,
+            'red_portion': None
         },
         'gen_opt': {
             'lr': 2e-4,
@@ -42,7 +44,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
         'disc': {
             'c_hidden': 64,
             'n_contracting_blocks': 4,
-            'use_spectral_norm': False,
+            'use_spectral_norm': True,
             'adv_criterion': 'MSE',
             'output_kernel_size': (3, 5),
         },

@@ -21,7 +21,7 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
 
     def __init__(self, c_in: int, c_hidden: int = 64, n_contracting_blocks: int = 4, use_spectral_norm: bool = False,
                  logger: Optional[CommandLineLogger] = None, adv_criterion: Optional[str] = None,
-                 output_kernel_size: Optional[Tuple] = None):
+                 output_kernel_size: Optional[Tuple] = None, red_portion: Optional[float] = None):
         """
         DCGanDiscriminator class constructor.
         :param (int) c_in: number of input channels
@@ -34,6 +34,7 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
                                          call
         :param (optional) output_kernel_size: if not set defaults to (3,5); e.g. a (2,4) kernel results to a PatchGAN
                                               like discriminator with 2x2 output size
+        :param (optional) red_portion: if set, Separable architecture will be employed
         """
         if output_kernel_size is None:
             output_kernel_size = (3, 5)
@@ -45,14 +46,16 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
         nn.Module.__init__(self)
         self.disc = nn.Sequential(
             # Encoding (aka contracting) blocks
-            ContractingBlock(c_in=c_in, c_out=c_hidden, kernel_size=4, stride=2, padding=1),
+            ContractingBlock(c_in=c_in, c_out=c_hidden, kernel_size=4, stride=2, padding=1, bias=False,
+                             red_portion=red_portion),
             *[
-                ContractingBlock(c_hidden * 2 ** i, kernel_size=4, stride=2, padding=1, use_norm=True,
-                                 norm_type='batch')
+                ContractingBlock(c_hidden * 2 ** i, kernel_size=4, stride=2, padding=1, use_norm=True, bias=False,
+                                 norm_type='batch', red_portion=red_portion)
                 for i in range(0, n_contracting_blocks - 1)
             ],
             ChannelsProjectLayer(c_hidden * 2 ** (n_contracting_blocks - 1), 1, use_spectral_norm=use_spectral_norm,
-                                 kernel_size=output_kernel_size, stride=1, padding=0)
+                                 kernel_size=output_kernel_size, stride=1, padding=0, bias=False,
+                                 red_portion=red_portion)
         )
 
         # Save args
@@ -121,9 +124,3 @@ if __name__ == '__main__':
                                output_kernel_size=(3, 5))
     print(_disc)
     print(_disc.nparams_hr)
-
-    _h_in, _w_in = 48, 80
-    _real = torch.randn(1, 2, _h_in, _w_in)
-    _fake = torch.randn(1, 2, _h_in, _w_in)
-    _loss = _disc.get_loss_both(real=_real, fake=_fake)
-    print(_loss)
