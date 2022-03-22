@@ -48,7 +48,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
             'c_hidden': 64,
             'n_contracting_blocks': 4,
             'use_spectral_norm': False,
-            'adv_criterion': 'BCEWithLogits',
+            'adv_criterion': 'Wasserstein',
             'output_kernel_size': (3, 5),
         },
         'disc_opt': {
@@ -413,6 +413,7 @@ if __name__ == '__main__':
     biogan.logger.debug(f'Model initialized. Number of params = {biogan.nparams_hr}')
 
     # Test visualization
-    biogan(next(iter(dataloader)))
+    _disc_loss, _gen_loss = biogan(next(iter(dataloader)))
+    print('disc_loss', _disc_loss, 'gen_loss', _gen_loss)
     biogan.visualize()
     plt.show()
