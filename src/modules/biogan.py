@@ -50,6 +50,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
             'use_spectral_norm': False,
             'adv_criterion': 'Wasserstein',
             'output_kernel_size': (3, 5),
+            'gp_lambda': 10.0,
         },
         'disc_opt': {
             'optim_type': 'Adam',
