@@ -35,14 +35,14 @@ def get_alpha_curve(num_iters: int, alpha_multiplier: float = 10.0,
 
 def get_optimizer(*models, optim_type: str = 'Adam',
                   scheduler_type: Optional[str] = None, scheduler_kwargs: Optional[dict] = None,
-                  **optim_args) -> Tuple[Optimizer, Optional[CyclicLR or ReduceLROnPlateau]]:
+                  optim_kwargs: Optional[dict] = None) -> Tuple[Optimizer, Optional[CyclicLR or ReduceLROnPlateau]]:
     """
     Get Adam optimizer for jointly training ${models} argument.
     :param models: one or more models to apply optimizer on
     :param (float) optim_type: type of optimizer to use (all of PyTorch's optimizers are supported)
     :param (str|None) scheduler_type: if set, then it is the type of LR Scheduler user
     :param (optional) scheduler_kwargs: scheduler kwargs as a dict object (NOT **KWARGS-LIKE PASSING)
-    :param (dict) optim_args: optimizer class's arguments
+    :param (optional) optim_kwargs: optimizer kwargs as a dict object
     :return: a tuple containing an instance of `torch.optim.Adam` optimizer, the LR scheduler instance or None
     """
     # Initialize optimizer
@@ -50,7 +50,9 @@ def get_optimizer(*models, optim_type: str = 'Adam',
     for model in models:
         joint_params += list(model.parameters())
     optim_class = getattr(torch.optim, optim_type)
-    optim = optim_class(joint_params, **optim_args)
+    if optim_kwargs is None:
+        optim_kwargs = {}
+    optim = optim_class(joint_params, **optim_kwargs)
     # If no LR scheduler requested, return None as the 2nd parameter
     if scheduler_type is None:
         return optim, None

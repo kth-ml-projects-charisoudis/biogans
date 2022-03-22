@@ -61,7 +61,8 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
         # Save args
         self.n_contracting_blocks = n_contracting_blocks
         self.logger = CommandLineLogger(name=self.__class__.__name__) if logger is None else logger
-        self.adv_criterion = getattr(nn, f'{adv_criterion}Loss')() if adv_criterion is not None else None
+        self.adv_criterion = getattr(nn, f'{adv_criterion}Loss')(size_average=True) \
+            if adv_criterion is not None else None
         self.verbose_enabled = False
 
     @property

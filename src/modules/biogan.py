@@ -37,20 +37,26 @@ class OneClassBioGan(nn.Module, IGanGModule):
             'red_portion': None
         },
         'gen_opt': {
-            'lr': 2e-4,
             'optim_type': 'Adam',
+            'optim_kwargs': {
+                'lr': 2e-4,
+                'betas': (0.5, 0.999),
+            },
             'scheduler_type': None
         },
         'disc': {
             'c_hidden': 64,
             'n_contracting_blocks': 4,
             'use_spectral_norm': True,
-            'adv_criterion': 'MSE',
+            'adv_criterion': 'BCEWithLogits',
             'output_kernel_size': (3, 5),
         },
         'disc_opt': {
-            'lr': 2e-4,
             'optim_type': 'Adam',
+            'optim_kwargs': {
+                'lr': 2e-4,
+                'betas': (0.5, 0.999),
+            },
             'scheduler_type': None
         }
     }
@@ -113,9 +119,9 @@ class OneClassBioGan(nn.Module, IGanGModule):
 
         # Define optimizers
         gen_opt_conf = self._configuration['gen_opt']
-        self.gen_opt, _ = get_optimizer(self.gen, lr=gen_opt_conf['lr'])
+        self.gen_opt, _ = get_optimizer(self.gen, **gen_opt_conf)
         disc_opt_conf = self._configuration['disc_opt']
-        self.disc_opt, _ = get_optimizer(self.disc, lr=disc_opt_conf['lr'])
+        self.disc_opt, _ = get_optimizer(self.disc, **disc_opt_conf)
 
         # Load checkpoint from Google Drive
         self.other_state_dicts = {}
