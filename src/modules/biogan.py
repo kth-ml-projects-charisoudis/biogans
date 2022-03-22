@@ -48,7 +48,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
             'c_hidden': 64,
             'n_contracting_blocks': 4,
             'use_spectral_norm': False,
-            'adv_criterion': 'BCE',
+            'adv_criterion': 'BCEWithLogits',
             'output_kernel_size': (3, 5),
         },
         'disc_opt': {
@@ -279,7 +279,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
             z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
             g_out = self.gen(z)
             gen_loss = self.disc.get_loss(x=g_out, is_real=True)
-            gen_loss.backward()  # Update generator gradients
+            gen_loss.backward(retain_graph=True)  # Update generator gradients
             self.gen_opt.step()  # Update generator weights
             # Update LR (if needed)
             if self.gen_opt_lr_scheduler:
@@ -416,3 +416,5 @@ if __name__ == '__main__':
     biogan(next(iter(dataloader)))
     biogan.visualize()
     plt.show()
+
+    biogan.local_chkpts_root

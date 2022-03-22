@@ -47,10 +47,10 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
         self.disc = nn.Sequential(
             # Encoding (aka contracting) blocks
             ContractingBlock(c_in=c_in, c_out=c_hidden, kernel_size=4, stride=2, padding=1, bias=False,
-                             red_portion=red_portion),
+                             activation='lrelu', red_portion=red_portion),
             *[
                 ContractingBlock(c_hidden * 2 ** i, kernel_size=4, stride=2, padding=1, use_norm=True, bias=False,
-                                 norm_type='batch', red_portion=red_portion)
+                                 norm_type='batch', activation='lrelu', red_portion=red_portion)
                 for i in range(0, n_contracting_blocks - 1)
             ],
             ChannelsProjectLayer(c_hidden * 2 ** (n_contracting_blocks - 1), 1, use_spectral_norm=use_spectral_norm,
@@ -94,7 +94,7 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
         """
         loss_on_real = self.get_loss(real, is_real=True, criterion=criterion)
         loss_on_fake = self.get_loss(fake, is_real=False, criterion=criterion)
-        return 0.5 * (loss_on_real + loss_on_fake)
+        return (loss_on_real + loss_on_fake).mean()
 
     # noinspection DuplicatedCode
     def get_loss(self, x: Tensor, is_real: bool, criterion: Optional[nn.modules.Module] = None) -> Tensor:
@@ -111,7 +111,7 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
         # Proceed with loss calculation
         predictions = self(x)
         # print('DISC OUTPUT SHAPE: ' + str(predictions.shape))
-        if type(criterion) in [nn.modules.loss.BCELoss, nn.modules.loss.BCEWithLogitsLoss]:
+        if type(criterion) == nn.modules.loss.BCELoss:
             predictions = nn.Sigmoid()(predictions)
         reference = torch.ones_like(predictions) if is_real else torch.zeros_like(predictions)
         return criterion(predictions, reference)
