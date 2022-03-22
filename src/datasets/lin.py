@@ -110,7 +110,7 @@ class LINDataset(Dataset, GDriveDataset):
 
     @transforms.setter
     def transforms(self, t: Optional[Compose] = None) -> None:
-        if t is None:
+        if t is None:  # load default transforms
             self._transforms = transforms.Compose([
                 transforms.RandomHorizontalFlip(),
                 RandomVerticalFlip(),
