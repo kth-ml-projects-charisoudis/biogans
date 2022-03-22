@@ -94,7 +94,7 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
         """
         loss_on_real = self.get_loss(real, is_real=True, criterion=criterion)
         loss_on_fake = self.get_loss(fake, is_real=False, criterion=criterion)
-        return (loss_on_real + loss_on_fake).mean()
+        return loss_on_real + loss_on_fake
 
     # noinspection DuplicatedCode
     def get_loss(self, x: Tensor, is_real: bool, criterion: Optional[nn.modules.Module] = None) -> Tensor:

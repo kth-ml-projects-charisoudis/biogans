@@ -39,7 +39,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
         'gen_opt': {
             'optim_type': 'Adam',
             'optim_kwargs': {
-                'lr': 2e-4,
+                'lr': 0.0002,
                 'betas': (0.5, 0.999),
             },
             'scheduler_type': None
@@ -54,7 +54,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
         'disc_opt': {
             'optim_type': 'Adam',
             'optim_kwargs': {
-                'lr': 2e-4,
+                'lr': 0.0002,
                 'betas': (0.5, 0.999),
             },
             'scheduler_type': None
@@ -279,7 +279,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
             z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
             g_out = self.gen(z)
             gen_loss = self.disc.get_loss(x=g_out, is_real=True)
-            gen_loss.backward(retain_graph=True)  # Update generator gradients
+            gen_loss.backward()  # Update generator gradients
             self.gen_opt.step()  # Update generator weights
             # Update LR (if needed)
             if self.gen_opt_lr_scheduler:
@@ -416,5 +416,3 @@ if __name__ == '__main__':
     biogan(next(iter(dataloader)))
     biogan.visualize()
     plt.show()
-
-    biogan.local_chkpts_root
