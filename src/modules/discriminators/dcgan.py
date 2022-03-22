@@ -69,16 +69,13 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
     def nparams_hr(self):
         return to_human_readable(get_total_params(self))
 
-    def forward(self, x: Tensor, y: Optional[Tensor] = None) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         """
         Function for completing a forward pass of PatchGANDiscriminator:
         Given an image tensor, returns a 2D matrix of realness probabilities for each image's "patches".
         :param (torch.Tensor) x: image tensor of shape (N, C_in, H, W)
-        :param (torch.Tensor) y: image tensor of shape (N, C_y, H, W) containing the condition images (e.g. for pix2pix)
         :return: transformed image tensor of shape (N, 1, P_h, P_w)
         """
-        if y is not None:
-            x = torch.cat([x, y], dim=1)  # channel-wise concatenation
         if self.verbose_enabled:
             self.logger.debug(f'_: {x.shape}')
         return self.disc(x)
@@ -111,8 +108,8 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
         # Proceed with loss calculation
         predictions = self(x)
         # print('DISC OUTPUT SHAPE: ' + str(predictions.shape))
-        if type(criterion) == nn.modules.loss.BCELoss:
-            predictions = nn.Sigmoid()(predictions)
+        # if type(criterion) == nn.modules.loss.BCELoss:
+        #     predictions = nn.Sigmoid()(predictions)
         reference = torch.ones_like(predictions) if is_real else torch.zeros_like(predictions)
         return criterion(predictions, reference)
 
