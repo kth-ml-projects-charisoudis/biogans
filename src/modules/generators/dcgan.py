@@ -86,13 +86,13 @@ class SeparableDCGanGenerator(DCGanGenerator):
 
 if __name__ == '__main__':
     _gen = DCGanGenerator(c_out=6 + 1, z_dim=100, n_extra_layers=2)
-    # _z = torch.randn(10, 100)
-    # print(_gen)
-    # print(_gen(_z).shape)
-    # get_total_params(_gen, True, True)
-
-    _gen = SeparableDCGanGenerator(c_out=7, n_extra_layers=0)
+    _z = torch.randn(10, 100)
     print(_gen)
-    x_red, x_green = _gen(_gen.get_random_z(batch_size=1))
-    print(x_red.shape, x_green.shape)
+    print(_gen(_z).shape)
     get_total_params(_gen, True, True)
+
+    # _gen = SeparableDCGanGenerator(c_out=7, n_extra_layers=0)
+    # print(_gen)
+    # x_red, x_green = _gen(_gen.get_random_z(batch_size=1))
+    # print(x_red.shape, x_green.shape)
+    # get_total_params(_gen, True, True)
