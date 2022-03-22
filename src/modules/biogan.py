@@ -113,15 +113,15 @@ class OneClassBioGan(nn.Module, IGanGModule):
         disc_conf['c_in'] = 2
         self.disc = DCGanDiscriminator(**disc_conf)
 
-        # Move models to {C,G,T}PU
-        self.gen.to(device)
-        self.disc.to(device)
-
         # Define optimizers
         gen_opt_conf = self._configuration['gen_opt']
         self.gen_opt, _ = get_optimizer(self.gen, **gen_opt_conf)
         disc_opt_conf = self._configuration['disc_opt']
         self.disc_opt, _ = get_optimizer(self.disc, **disc_opt_conf)
+
+        # Move models to {C,G,T}PU
+        self.gen.to(device)
+        self.disc.to(device)
 
         # Load checkpoint from Google Drive
         self.other_state_dicts = {}
