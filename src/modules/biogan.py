@@ -1,9 +1,12 @@
+import os.path
+import pathlib
 from typing import Optional, Sequence, Tuple, Union
 
 import click
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import wget
 from PIL.Image import Image
 from torch import nn, Tensor
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -16,6 +19,8 @@ from utils.ifaces import FilesystemFolder
 from utils.metrics import GanEvaluator
 from utils.plot import create_img_grid, plot_grid
 from utils.train import get_optimizer, set_optimizer_lr, weights_init_naive, get_optimizer_lr_scheduler
+
+PROJECT_DIR_PATH = pathlib.Path(__file__).parent.parent.parent.resolve()
 
 
 class OneClassBioGan(nn.Module, IGanGModule):
@@ -39,8 +44,8 @@ class OneClassBioGan(nn.Module, IGanGModule):
         'gen_opt': {
             'optim_type': 'Adam',
             'optim_kwargs': {
-                'lr': 0.0002,
-                'betas': (0.5, 0.999),
+                'lr': 0.0001,
+                'betas': (0.0, 0.9),
             },
             'scheduler_type': None
         },
@@ -55,21 +60,30 @@ class OneClassBioGan(nn.Module, IGanGModule):
         'disc_opt': {
             'optim_type': 'Adam',
             'optim_kwargs': {
-                'lr': 0.0002,
-                'betas': (0.5, 0.999),
+                'lr': 0.0001,
+                'betas': (0.0, 0.9),
             },
             'scheduler_type': None
-        }
+        },
+        'n_disc_iters': 5
     }
 
-    PROTEIN_CLASS = 'Alp14'
+    PROTEIN_CLASS = 'Cki2'
+    PROTEIN_CLASS_INDEX = {
+        'Alp14': 0,
+        'Arp3': 1,
+        'Cki2': 2,
+        'Mkh1': 3,
+        'Sid2': 4,
+        'Tea1': 5,
+    }[PROTEIN_CLASS]
 
     @classmethod
     def version(cls) -> str:
         return cls.PROTEIN_CLASS
 
     def __init__(self, model_fs_folder_or_root: FilesystemFolder, config_id: Optional[str] = None,
-                 chkpt_epoch: Optional[int or str] = None, chkpt_step: Optional[int] = None,
+                 chkpt_epoch: Optional[int or str] = None, chkpt_step: Optional[int or str] = None,
                  device: torch.device or str = 'cpu', gen_transforms: Optional[Compose] = None, log_level: str = 'info',
                  dataset_len: Optional[int] = None, reproducible_indices: Sequence = (0, -1),
                  evaluator: Optional[GanEvaluator] = None, **evaluator_kwargs):
@@ -82,9 +96,9 @@ class OneClassBioGan(nn.Module, IGanGModule):
                                         used to initialize the model
         :param (int or str or None) chkpt_epoch: if not `None` then the model checkpoint at the given :attr:`step` will
                                                  be loaded via `nn.Module().load_state_dict()`
-        :param (int or None) chkpt_step: if not `None` then the model checkpoint at the given :attr:`step` and at
+        :param (int or str or None) chkpt_step: if not `None` then the model checkpoint at the given :attr:`step` and at
                                          the given :attr:`batch_size` will be loaded via `nn.Module().load_state_dict()`
-                                         call
+                                         call. If you have aoskin chkpt path, pass it here as "aoskin:<path>".
         :param (str) device: the device used for training (supported: "cuda", "cuda:<GPU_INDEX>", "cpu")
         :param (Compose) gen_transforms: the image transforms of the dataset the generator is trained on (used in
                                          visualization)
@@ -126,7 +140,28 @@ class OneClassBioGan(nn.Module, IGanGModule):
 
         # Load checkpoint from Google Drive
         self.other_state_dicts = {}
-        if chkpt_epoch is not None:
+        if chkpt_step is not None and chkpt_step.startswith('aoskin') or \
+                chkpt_epoch is not None and chkpt_epoch.startswith('aoskin'):
+            # load aoskin checkpoint in generator
+            _, aoskin_path = chkpt_step.split(':') if chkpt_step is not None else chkpt_epoch.split(':')
+            if os.path.basename(aoskin_path) == 'auto':
+                aoskin_path = aoskin_path.replace(
+                    '/auto',
+                    f'/size-48-80_6class_{config_id.replace("wgan-gp", "wgangp")}-adam/netG_iter_50000.pth'
+                )
+                if not os.path.exists(aoskin_path):
+                    # try downloading file
+                    p = pathlib.Path(aoskin_path)
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    wget.download(
+                        f'http://www.di.ens.fr/sierra/research/biogans/models/{p.relative_to(p.parent.parent)}',
+                        out=str(p.parent.absolute()))
+            self.logger.debug(f'Loading AOSKIN checkpoint (class={self.__class__.PROTEIN_CLASS_INDEX}): {aoskin_path}')
+            self.gen.load_aoskin_state_dict(state_dict=torch.load(aoskin_path, map_location='cpu'),
+                                            class_idx=self.__class__.PROTEIN_CLASS_INDEX)
+            # TODO: what should be loaded at the Discriminator after this?
+            chkpt_epoch = 3200
+        elif chkpt_epoch is not None:
             try:
                 chkpt_filepath = self.fetch_checkpoint(epoch_or_id=chkpt_epoch, step=chkpt_step)
                 self.logger.debug(f'Loading checkpoint file: {chkpt_filepath}')
@@ -173,6 +208,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
         self.g_out = None
         self.x = None
         self.device = device
+        self.n_disc_iters = self._configuration.get('n_disc_iters', 1)
 
     def load_configuration(self, configuration: dict) -> None:
         IGanGModule.load_configuration(self, configuration)
@@ -182,6 +218,10 @@ class OneClassBioGan(nn.Module, IGanGModule):
     # nn.Module
     # -----------
     #
+
+    ##################################
+    ## Checkpointing
+    #################################
 
     def load_state_dict(self, state_dict: dict, strict: bool = True):
         """
@@ -203,7 +243,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
         self.disc.load_state_dict(state_dict['disc'])
         self.disc_opt.load_state_dict(state_dict['disc_opt'])
         self._nparams = state_dict['nparams']
-        # Update latest metrics with checkpoint's metrics
+        # Update the latest metrics with checkpoint's metrics
         if 'metrics' in state_dict.keys():
             self.latest_metrics = state_dict['metrics']
         self.logger.debug(f'State dict loaded. Keys: {tuple(state_dict.keys())}')
@@ -244,6 +284,10 @@ class OneClassBioGan(nn.Module, IGanGModule):
             'configuration': self._configuration,
         }
 
+    ##################################
+    ## Training
+    #################################
+
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         """
         This method implements the forward pass through Inception v3 network.
@@ -259,18 +303,19 @@ class OneClassBioGan(nn.Module, IGanGModule):
         ########   Update Discriminator   ########
         ##########################################
         with self.gen.frozen():
-            self.disc_opt.zero_grad()  # Zero out discriminator gradient (before backprop)
-            z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
-            g_out = self.gen(z)
-            disc_loss = self.disc.get_loss_both(real=x, fake=g_out.detach())
-            disc_loss.backward(retain_graph=True)  # Update discriminator gradients
-            self.disc_opt.step()  # Update discriminator weights
-            # Update LR (if needed)
-            if self.disc_opt_lr_scheduler:
-                if isinstance(self.disc_opt_lr_scheduler, ReduceLROnPlateau):
-                    self.disc_opt_lr_scheduler.step(metrics=disc_loss)
-                else:
-                    self.disc_opt_lr_scheduler.step()
+            for di in range(self.n_disc_iters):
+                self.disc_opt.zero_grad()  # Zero out discriminator gradient (before backprop)
+                z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
+                g_out = self.gen(z)
+                disc_loss = self.disc.get_loss_both(real=x, fake=g_out.detach())
+                disc_loss.backward(retain_graph=True)  # Update discriminator gradients
+                self.disc_opt.step()  # Update discriminator weights
+                # Update LR (if needed)
+                if self.disc_opt_lr_scheduler:
+                    if isinstance(self.disc_opt_lr_scheduler, ReduceLROnPlateau):
+                        self.disc_opt_lr_scheduler.step(metrics=disc_loss)
+                    else:
+                        self.disc_opt_lr_scheduler.step()
 
         ##########################################
         ########     Update Generator     ########
@@ -397,19 +442,21 @@ if __name__ == '__main__':
     evaluator = GanEvaluator(model_fs_folder_or_root=_models_groot, gen_dataset=dataset, target_index=1,
                              device=exec_device, condition_indices=(0, 2), n_samples=2, batch_size=2, f1_k=2)
     #   - initialize model
-    chkpt_step = None
-    try:
-        if chkpt_step == 'latest':
-            _chkpt_step = chkpt_step
-        elif isinstance(chkpt_step, str) and chkpt_step.isdigit():
-            _chkpt_step = int(chkpt_step)
-        else:
-            _chkpt_step = None
-    except NameError:
-        _chkpt_step = None
-    biogan = OneClassBioGan(model_fs_folder_or_root=_models_groot, config_id='default', dataset_len=len(dataset),
-                            chkpt_epoch=_chkpt_step, evaluator=evaluator, device=exec_device, log_level='debug',
-                            gen_transforms=dataloader.transforms)
+    _chkpt_step = f'aoskin:{PROJECT_DIR_PATH}/aoskin_checkpoints/auto'
+    # chkpt_step = None
+    # try:
+    #     if chkpt_step == 'latest':
+    #         _chkpt_step = chkpt_step
+    #     elif isinstance(chkpt_step, str) and chkpt_step.isdigit():
+    #         _chkpt_step = int(chkpt_step)
+    #     else:
+    #         _chkpt_step = None
+    # except NameError:
+    #     _chkpt_step = None
+    biogan = OneClassBioGan(model_fs_folder_or_root=_models_groot, config_id='wgan-gp-independent-sep',
+                            dataset_len=len(dataset), chkpt_epoch=_chkpt_step, evaluator=evaluator, device=exec_device,
+                            log_level='debug', gen_transforms=dataloader.transforms)
+    # print(biogan.gen)
     biogan.logger.debug(f'Using device: {str(exec_device)}')
     biogan.logger.debug(f'Model initialized. Number of params = {biogan.nparams_hr}')
 

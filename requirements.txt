@@ -12,10 +12,10 @@ numpy
 Pillow
 ipython
 scipy
-httplib2==0.15.0
+httplib2
 oauth2client
-google-api-python-client
 pydrive
 tensorboard
 pyyaml
 h5py
+wget

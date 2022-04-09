@@ -1,11 +1,12 @@
-from typing import Tuple, Optional
+from collections import OrderedDict
+from typing import Tuple, Optional, OrderedDict as OrderedDictT
 
 import torch
+import yaml
 from torch import nn
 
 from modules.partial.decoding import ExpandingBlock
 from utils.ifaces import BalancedFreezable
-from utils.pytorch import get_total_params
 
 
 class DCGanGenerator(nn.Module, BalancedFreezable):
@@ -64,6 +65,12 @@ class DCGanGenerator(nn.Module, BalancedFreezable):
     def get_random_z(self, batch_size: int = 1, device='cpu') -> torch.Tensor:
         return torch.randn(batch_size, self.z_dim, device=device)
 
+    def load_aoskin_state_dict(self, state_dict: OrderedDictT[str, torch.Tensor], class_idx: int = 0):
+        self_keys = [k for k in self.state_dict().keys() if not k.endswith('num_batches_tracked')]
+        sd_keys = [k for k in state_dict.keys() if k.startswith(f'main.{class_idx}')]
+        class_state_dict = OrderedDict({k_new: state_dict[k] for k, k_new in zip(sd_keys, self_keys)})
+        self.load_state_dict(class_state_dict)
+
 
 class SeparableDCGanGenerator(DCGanGenerator):
     """
@@ -85,14 +92,21 @@ class SeparableDCGanGenerator(DCGanGenerator):
 
 
 if __name__ == '__main__':
-    _gen = DCGanGenerator(c_out=6 + 1, z_dim=100, n_extra_layers=2)
-    _z = torch.randn(10, 100)
-    print(_gen)
-    print(_gen(_z).shape)
-    get_total_params(_gen, True, True)
+    # _gen = DCGanGenerator(c_out=6 + 1, z_dim=100, n_extra_layers=2)
+    # _z = torch.randn(10, 100)
+    # print(_gen)
+    # print(_gen(_z).shape)
+    # get_total_params(_gen, True, True)
 
     # _gen = SeparableDCGanGenerator(c_out=7, n_extra_layers=0)
     # print(_gen)
     # x_red, x_green = _gen(_gen.get_random_z(batch_size=1))
     # print(x_red.shape, x_green.shape)
     # get_total_params(_gen, True, True)
+
+    with open(
+            '/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.gdrive_personal/Models/model_name=oneclassbiogan_alp14/Configurations/wgan-gp-independent-sep.yaml') as fp:
+        config = yaml.load(fp, Loader=yaml.FullLoader)
+    _gen = DCGanGenerator(**config['gen'])
+    chkpt_path = '/aoskin_wgan_id_sep.pth'
+    _gen.load_aoskin_state_dict(state_dict=torch.load(chkpt_path, map_location='cpu'))
