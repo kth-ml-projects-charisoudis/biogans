@@ -68,15 +68,15 @@ class OneClassBioGan(nn.Module, IGanGModule):
         'n_disc_iters': 5
     }
 
-    PROTEIN_CLASS = 'Cki2'
-    PROTEIN_CLASS_INDEX = {
+    PROTEIN_CLASS = 'Alp14'
+    PROTEIN_CLASS_INDICES = {
         'Alp14': 0,
         'Arp3': 1,
         'Cki2': 2,
         'Mkh1': 3,
         'Sid2': 4,
         'Tea1': 5,
-    }[PROTEIN_CLASS]
+    }
 
     @classmethod
     def version(cls) -> str:
@@ -156,9 +156,10 @@ class OneClassBioGan(nn.Module, IGanGModule):
                     wget.download(
                         f'http://www.di.ens.fr/sierra/research/biogans/models/{p.relative_to(p.parent.parent)}',
                         out=str(p.parent.absolute()))
-            self.logger.debug(f'Loading AOSKIN checkpoint (class={self.__class__.PROTEIN_CLASS_INDEX}): {aoskin_path}')
+            self.protein_class_index = self.__class__.PROTEIN_CLASS_INDICES[self.__class__.PROTEIN_CLASS]
+            self.logger.debug(f'Loading AOSKIN checkpoint (class={self.protein_class_index}): {aoskin_path}')
             self.gen.load_aoskin_state_dict(state_dict=torch.load(aoskin_path, map_location='cpu'),
-                                            class_idx=self.__class__.PROTEIN_CLASS_INDEX)
+                                            class_idx=self.protein_class_index)
             # TODO: what should be loaded at the Discriminator after this?
             chkpt_epoch = 3200
         elif chkpt_epoch is not None:
@@ -424,6 +425,7 @@ if __name__ == '__main__':
     _datasets_groot = _groot.subfolder_by_name('Datasets')
 
     exec_device = 'cpu'
+    CLASS = 'Cki2'  # 'Arp3', 'Cki2', 'Tea1'
 
     ###################################
     ###   Dataset Initialization    ###
@@ -432,7 +434,7 @@ if __name__ == '__main__':
     #     > len(dataloader) = <number of batches>
     #     > len(dataloader.dataset) = <number of total dataset items>
     dataloader = LINDataloader(dataset_fs_folder_or_root=_datasets_groot, train_not_test=True,
-                               batch_size=2, which_classes='Alp14')
+                               batch_size=2, which_classes=CLASS)
     dataset = dataloader.dataset
 
     ###################################
@@ -453,6 +455,7 @@ if __name__ == '__main__':
     #         _chkpt_step = None
     # except NameError:
     #     _chkpt_step = None
+    OneClassBioGan.PROTEIN_CLASS = CLASS
     biogan = OneClassBioGan(model_fs_folder_or_root=_models_groot, config_id='wgan-gp-independent-sep',
                             dataset_len=len(dataset), chkpt_epoch=_chkpt_step, evaluator=evaluator, device=exec_device,
                             log_level='debug', gen_transforms=dataloader.transforms)
