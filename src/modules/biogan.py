@@ -27,7 +27,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
     """
     OneClassBioGan Class:
     This class is used to access and use the entire 1-class BioGAN model (implemented according to the paper "GANs for
-    Biological Image Synthesis" as a `nn.Module` instance but with the additional functionality provided from inheriting
+    Biological Image Synthesis") as a `nn.Module` instance but with additional functionality provided from inheriting
     `utils.gdrive.GDriveModel` (through the `utils.ifaces.IGanGModule` interface). Inheriting GDriveModel enables easy
     download / upload of model checkpoints to Google Drive using GoogleDrive API's python client and PyDrive.
     """
@@ -392,7 +392,6 @@ class OneClassBioGan(nn.Module, IGanGModule):
                 self.g_out = self.gen(self.gen.get_random_z(batch_size=self.x.shape[0], device=self.device)).cpu()
         x_0 = self.x[0]
         g_out_0 = self.g_out[0]
-        x__1 = self.x[-1]
         g_out__1 = self.g_out[-1]
 
         # Concat images to a 2x5 grid (each row is a separate generation, the columns contain real and generated images
