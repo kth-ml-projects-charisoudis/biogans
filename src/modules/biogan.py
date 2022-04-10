@@ -425,7 +425,7 @@ if __name__ == '__main__':
     _datasets_groot = _groot.subfolder_by_name('Datasets')
 
     exec_device = 'cpu'
-    CLASS = 'Cki2'  # 'Arp3', 'Cki2', 'Tea1'
+    CLASS = 'Alp14'  # 'Alp14',  'Arp3', 'Cki2', 'Tea1'
 
     ###################################
     ###   Dataset Initialization    ###

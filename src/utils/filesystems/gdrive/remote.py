@@ -219,7 +219,9 @@ class GDriveCapsule(FilesystemCapsule):
 
         # Instantiate service & Http client and return
         try:
-            _http = ocredentials.authorize(httplib2.Http(cache=cache_root))
+            _httpl = httplib2.Http(cache=cache_root)
+            _httpl.redirect_codes = {300}
+            _http = ocredentials.authorize(_httpl)
             _service = build('drive', 'v2', http=_http, cache_discovery=cache_root is not None)
             return _service, _http, ocredentials
         except KeyError or ValueError or InvalidConfigError:
