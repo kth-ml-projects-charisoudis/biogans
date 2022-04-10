@@ -391,6 +391,7 @@ class IModule(FilesystemModel, Configurable, Evaluable, Visualizable, metaclass=
 
         # Create a subfolder inside "Visualizations" folder to store aggregated metrics plots
         vis_metrics_folder = self.visualizations_fs_folder.subfolder_by_name_or_create(folder_name='Metrics Plots')
+        vis_metrics_folder.ensure_local_root_exists()
         filename_suffix = f'epochs={tuple(epoch_metrics_dict.keys())[0]}_{tuple(epoch_metrics_dict.keys())[-1]}.jpg'
 
         # Save metric plots as images & display inline
