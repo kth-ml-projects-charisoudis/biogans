@@ -1,12 +1,12 @@
 from collections import OrderedDict
-from typing import Tuple, Optional, OrderedDict as OrderedDictT
+from typing import Optional, OrderedDict as OrderedDictT
 
 import torch
-import yaml
 from torch import nn
 
 from modules.partial.decoding import ExpandingBlock
 from utils.ifaces import BalancedFreezable
+from utils.pytorch import get_total_params
 
 
 class DCGanGenerator(nn.Module, BalancedFreezable):
@@ -86,10 +86,6 @@ class SeparableDCGanGenerator(DCGanGenerator):
         self.c_out_red = int(c_out * red_portion)
         self.c_out_green = c_out - self.c_out_red
 
-    def forward(self, z: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        out = super().forward(z)
-        return torch.split(out, [self.c_out_red, self.c_out_green], dim=1)
-
 
 if __name__ == '__main__':
     # _gen = DCGanGenerator(c_out=6 + 1, z_dim=100, n_extra_layers=2)
@@ -98,15 +94,17 @@ if __name__ == '__main__':
     # print(_gen(_z).shape)
     # get_total_params(_gen, True, True)
 
-    # _gen = SeparableDCGanGenerator(c_out=7, n_extra_layers=0)
-    # print(_gen)
-    # x_red, x_green = _gen(_gen.get_random_z(batch_size=1))
-    # print(x_red.shape, x_green.shape)
-    # get_total_params(_gen, True, True)
+    _gen = SeparableDCGanGenerator(c_out=2, n_extra_layers=0)
+    print(_gen)
+    _out = _gen(_gen.get_random_z(batch_size=1))
+    print(_out.shape)
+    x_red, x_green = torch.split(_out, [_gen.c_out_red, _gen.c_out_green], dim=1)
+    print(x_red.shape, x_green.shape)
+    get_total_params(_gen, True, True)
 
-    with open(
-            '/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.gdrive_personal/Models/model_name=oneclassbiogan_alp14/Configurations/wgan-gp-independent-sep.yaml') as fp:
-        config = yaml.load(fp, Loader=yaml.FullLoader)
-    _gen = DCGanGenerator(**config['gen'])
-    chkpt_path = '/aosokin_wgan_id_sep.pth'
-    _gen.load_aosokin_state_dict(state_dict=torch.load(chkpt_path, map_location='cpu'))
+    # with open('/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.gdrive_personal/Models/model_name' +
+    #           '=oneclassbiogan_alp14/Configurations/wgan-gp-independent-sep.yaml') as fp:
+    #     config = yaml.load(fp, Loader=yaml.FullLoader)
+    # _gen = DCGanGenerator(**config['gen'])
+    # chkpt_path = '/aosokin_wgan_id_sep.pth'
+    # _gen.load_aosokin_state_dict(state_dict=torch.load(chkpt_path, map_location='cpu'))
