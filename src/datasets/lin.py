@@ -9,7 +9,6 @@ import click
 import numpy as np
 import torch
 from PIL import Image, UnidentifiedImageError
-from matplotlib import pyplot as plt
 from torch import Tensor
 # noinspection PyProtectedMember
 from torch.utils.data import Dataset, DataLoader
@@ -21,6 +20,7 @@ from utils.command_line_logger import CommandLineLogger
 from utils.filesystems.gdrive import GDriveDataset
 from utils.filesystems.local import LocalCapsule, LocalFilesystem, LocalFolder
 from utils.ifaces import FilesystemFolder
+from utils.pytorch import LinToTensorNormalized, ToNumpy
 from utils.string import to_human_readable
 
 
@@ -100,7 +100,7 @@ class LINDataset(Dataset, GDriveDataset):
                           f'(train={train_not_test} | which={which_classes})')
         # Save transforms
         self._transforms = None
-        self.transforms = None
+        self.transforms = image_transforms
         self.return_path = return_path
 
     @property
@@ -113,8 +113,8 @@ class LINDataset(Dataset, GDriveDataset):
             self._transforms = transforms.Compose([
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.RandomVerticalFlip(p=0.5),
-                transforms.ToTensor(),
-                transforms.Normalize(0.5, 0.5)
+                ToNumpy(),
+                LinToTensorNormalized()
             ])
         else:
             self._transforms = t
@@ -134,8 +134,8 @@ class LINDataset(Dataset, GDriveDataset):
             self.logger.critical(f'Image opening failed (path: {cell_img_path_abs})')
             return self.__getitem__(index + 1)
         # Apply transforms
-        if self.transforms:
-            cell_img_tensor = self.transforms(cell_img)
+        if self._transforms is not None:
+            cell_img_tensor = self._transforms(cell_img)
             cell_img.close()
             cell_img = cell_img_tensor[:2, :, :]  # 3rd channel (blue) is 0
         if self.return_path:
@@ -223,7 +223,7 @@ class LINDataloader(DataLoader):
 
     def __init__(self, dataset_fs_folder_or_root: FilesystemFolder, image_transforms: Optional[Compose] = None,
                  train_not_test: bool = True, which_classes: str = 'all', logger: Optional[CommandLineLogger] = None,
-                 **dl_kwargs):
+                 return_path: bool = False, **dl_kwargs):
         """
         LINDataloader class constructor.
         :param (FilesystemFolder) dataset_fs_folder_or_root: a `utils.ifaces.FilesystemFolder` object to download / use
@@ -234,12 +234,14 @@ class LINDataloader(DataLoader):
         :param batch_size: the number of images per (mini) batch
         :param (bool) pin_memory: set to True to have data transferred in GPU from the Pinned RAM (this is thoroughly
                                   explained here: https://developer.nvidia.com/blog/how-optimize-data-transfers-cuda-cc)
+        :param bool return_path: set to True to return img_batch, path_batch on every next() call
         :raises FileNotFoundError: either when the dataset is not present in local filesystem or when the
                                    `polarity_factor_info.json` is not present inside dataset's (local) root
         """
         # Instantiate dataset
         dataset = LINDataset(dataset_fs_folder_or_root=dataset_fs_folder_or_root, image_transforms=image_transforms,
-                             train_not_test=train_not_test, which_classes=which_classes, logger=logger)
+                             train_not_test=train_not_test, which_classes=which_classes, return_path=return_path,
+                             logger=logger)
         # Instantiate dataloader
         DataLoader.__init__(self, dataset=dataset, **dl_kwargs)
         self.transforms = dataset.transforms
@@ -405,16 +407,21 @@ class LINNearestNeighborsScraper:
         self.nn_dl_bs = 50
         self.searched_classes = LINDataset.Classes
         self.query_dataloaders = {k: LINDataloader(dataset_gfolder, train_not_test=True, logger=self.logger,
-                                                   which_classes=k, batch_size=20, pin_memory=True)
+                                                   which_classes=k, batch_size=20, pin_memory=True, return_path=True,
+                                                   image_transforms=ToNumpy())
                                   for k in self.searched_classes}
         # searched_classes = [k for k in LINDataset.Classes if k.startswith('A')]
         self.nn_dataloaders = {k: LINDataloader(dataset_gfolder, train_not_test=which_search == 'train',
                                                 logger=self.logger, which_classes=k, batch_size=self.nn_dl_bs,
-                                                pin_memory=True, num_workers=4)
+                                                return_path=True, pin_memory=True, num_workers=4)
                                for k in self.searched_classes}
         self.which_search = which_search
         self.dataset_gfolder: FilesystemFolder = dataset_gfolder
         self.dataset_lin_gfolder: FilesystemFolder = dataset_gfolder.subfolder_by_name('LIN_48x80')
+        self.dl_transforms = transforms.Compose([
+            ToNumpy(),
+            LinToTensorNormalized()
+        ])
 
     @staticmethod
     def _compute_L2_dists(query_img: Tensor, nn_imgs: Tensor, channel_index: int = 0) -> Tensor:
@@ -702,6 +709,8 @@ class LINNearestNeighborsScraper:
             assert os.path.exists(nearest_neighbors_info_path), f'searched at: {nearest_neighbors_info_path}'
             nearest_neighbors_pth_path = os.path.join(query_dataset.root, f'nearest_neighbors.pth')
             if os.path.exists(nearest_neighbors_pth_path):
+                os.rename(nearest_neighbors_pth_path, f'{nearest_neighbors_pth_path}.bak')
+            if os.path.exists(nearest_neighbors_pth_path):
                 _path = pathlib.Path(nearest_neighbors_pth_path)
                 self.logger.info(f'[generate][{query_dir}] File exists at ' +
                                  f'{_path.relative_to(_path.parent.parent.parent)}')
@@ -722,8 +731,10 @@ class LINNearestNeighborsScraper:
                     pbar.set_description(query_img_path)
                     #   - init data holder for red + greens
                     nn_pkl_item = torch.zeros(1 + len(self.searched_classes), 48, 80)
-                    nn_pkl_item[0, :, :] = query_img[0, :, :]
-                    nn_pkl_item[1 + query_class_idx, :, :] = query_img[1, :, :]
+                    red_binary_mask = query_img[0, :, :] > 0
+                    self.dl_transforms.transforms[-1].mask = red_binary_mask.clone().numpy()
+                    nn_pkl_item[0, :, :] = query_img[0, :, :] * red_binary_mask
+                    nn_pkl_item[1 + query_class_idx, :, :] = query_img[1, :, :] * red_binary_mask
                     #   - init data holder for reds
                     nn_reds_pkl_item = torch.zeros(len(self.searched_classes), 48, 80)
                     nn_reds_pkl_item[query_class_idx, :, :] = query_img[0, :, :]
@@ -733,7 +744,7 @@ class LINNearestNeighborsScraper:
                     #   - load nn images
                     for nn_img_path_i, nn_img_path in enumerate(nn_img_paths):
                         nn_img_path_abs = os.path.join(dataset_root, nn_img_path)
-                        nn_img = transforms.ToTensor()(Image.open(nn_img_path_abs))
+                        nn_img = self.dl_transforms(Image.open(nn_img_path_abs))
                         #   - add red channel to reds
                         nn_class_idx = path2class_idx(nn_img_path)
                         assert torch.allclose(nn_reds_pkl_item[nn_class_idx],
@@ -744,7 +755,7 @@ class LINNearestNeighborsScraper:
                         assert torch.allclose(nn_pkl_item[1 + nn_class_idx],
                                               torch.zeros_like(nn_pkl_item[1 + nn_class_idx])), \
                             f'{query_class_idx} vs. {nn_class_idx}'
-                        nn_pkl_item[1 + nn_class_idx, :, :] = nn_img[1, :, :]
+                        nn_pkl_item[1 + nn_class_idx, :, :] = nn_img[1, :, :] * red_binary_mask
                     #   - check assignments
                     for _i in range(len(self.searched_classes)):
                         assert not torch.allclose(nn_reds_pkl_item[_i], torch.zeros_like(nn_reds_pkl_item[_i])), f'{_i}'
@@ -824,10 +835,10 @@ class LINNearestNeighborsScraper:
 if __name__ == '__main__':
     _local_gdrive_root = '/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.gdrive_personal'
     if click.confirm('Do you want to (re)scrape the dataset now?', default=True):
-        # Scape images to create info files
-        LINScraper.run(forward_pass=True, backward_pass=True)
+        # # Scape images to create info files
+        # LINScraper.run(forward_pass=True, backward_pass=True)
         # Scrape nearest neighbors of each image in the training set
-        LINNearestNeighborsScraper.run(_local_gdrive_root, k=5, forward_pass=True, backward_pass=True,
+        LINNearestNeighborsScraper.run(_local_gdrive_root, k=5, forward_pass=False, backward_pass=False,
                                        generate_images=True)
 
     # Via locally-mounted Google Drive (when running from inside Google Colaboratory)
@@ -835,17 +846,18 @@ if __name__ == '__main__':
     _fs = LocalFilesystem(ccapsule=_capsule)
     _groot = LocalFolder.root(capsule_or_fs=_fs).subfolder_by_name('Datasets')
 
-    # _lin_train = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=True, which_classes='6class')
+    _lin_train = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=True, which_classes='6class')
     # _lin_test = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=False, which_classes='6class',
     #                        logger=_lin_train.logger)
-    # _lin_alp14_train = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=True, which_classes='Alp14',
-    #                               logger=_lin_train.logger)
+    _lin_alp14_train = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=True, which_classes='Alp14',
+                                  logger=_lin_train.logger)
     # _lin_alp14_test = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=False, which_classes='Alp14',
     #                              logger=_lin_train.logger)
     # # _lin.fetch_and_unzip()
-    _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Alp14')
-    plt.imshow(_lin_nn_alp14[0][1:].reshape(48 * 6, 80), cmap="Greens")
-    plt.show()
-    _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Alp14', reds_only=True)
-    plt.imshow(_lin_nn_alp14[0].reshape(48 * 6, 80), cmap="Reds")
-    plt.show()
+    # _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Alp14')
+    # plt.imshow(_lin_nn_alp14[0][1:].reshape(48 * 6, 80), cmap="Greens")
+    # plt.show()
+    # _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Alp14', reds_only=True)
+    # plt.imshow(_lin_nn_alp14[0].reshape(48 * 6, 80), cmap="Reds")
+    # plt.show()
+    print(_lin_alp14_train[0].shape)

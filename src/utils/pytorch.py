@@ -3,6 +3,7 @@ import os
 import random
 from typing import Any, Optional, Tuple
 
+import PIL
 import humanize
 import numpy as np
 import scipy.optimize
@@ -349,6 +350,7 @@ class ToTensorOrPass(transforms.ToTensor):
         :param (bool) renormalize: set to True to renormalize input tensors to [0,1], otherwise if Tensor object
                                    encountered in input it will return it intact
         """
+        super().__init__()
         self.renormalize = renormalize
 
     def __call__(self, pic_or_tensor):
@@ -388,3 +390,40 @@ class UnNormalize(torch.nn.Module):
 
     def forward(self, tensor: torch.Tensor) -> torch.Tensor:
         return self.inverse(tensor)
+
+
+class ToNumpy:
+    """
+    Source: https://github.com/aosokin/biogans/blob/cb72bb0457be335fad6c27a16bb1761b937a6d06/code/custom_dataloaders.py
+    """
+
+    # noinspection PyMethodMayBeStatic
+    def __call__(self, img: PIL.Image):
+        # convert to numpy array
+        img = np.array(img.getdata()).reshape((img.size[1], img.size[0], 3))
+        # permute dimensions
+        img = np.transpose(img, (2, 0, 1)).copy()
+        return img
+
+
+class LinToTensorNormalized:
+    """
+    Convert to torch tensor manually (torchvision.transforms.ToTensor is buggy).
+    Source: https://github.com/aosokin/biogans/blob/cb72bb0457be335fad6c27a16bb1761b937a6d06/code/custom_dataloaders.py
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.normalize = transforms.Normalize(0.5, 0.5)
+        self.mask = None
+
+    def __call__(self, img: np.ndarray) -> torch.Tensor:
+        if self.mask is not None:
+            for c in range(1, img.shape[0]):  # skip red
+                img[c, :, :] *= self.mask
+        img = torch.from_numpy(img.astype(np.float32)) / 255.0
+        img_norm = []
+        for i_c in range(img.size(0)):
+            img_norm.append(self.normalize(img[i_c].unsqueeze(0)))
+        img = torch.cat(img_norm, 0).contiguous()
+        return img
