@@ -77,10 +77,12 @@ class OneClassBioGan(nn.Module, IGanGModule):
         'Sid2': 4,
         'Tea1': 5,
     }
+    IS_SEPARABLE = False
 
     @classmethod
     def version(cls) -> str:
-        return cls.PROTEIN_CLASS
+        sep_suffix = '_sep' if cls.IS_SEPARABLE else ''
+        return f'{cls.PROTEIN_CLASS}{sep_suffix}'
 
     def __init__(self, model_fs_folder_or_root: FilesystemFolder, config_id: Optional[str] = None,
                  chkpt_epoch: Optional[int or str] = None, chkpt_step: Optional[int or str] = None,
@@ -111,6 +113,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
                                  `utils.metrics.GanEvaluator` instance
         """
         self.device = device
+        self.__class__.IS_SEPARABLE = config_id is not None and 'sep' in config_id
         # Initialize interface
         IGanGModule.__init__(self, model_fs_folder_or_root, config_id, device=device, log_level=log_level,
                              dataset_len=dataset_len, reproducible_indices=reproducible_indices,
