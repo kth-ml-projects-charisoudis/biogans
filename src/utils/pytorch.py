@@ -105,6 +105,7 @@ def get_gradient(disc: nn.Module, real: torch.Tensor, fake: torch.Tensor, epsilo
         grad_outputs=torch.ones_like(mixed_scores),
         create_graph=True,
         retain_graph=True,
+        only_inputs=True
     )[0]
 
 
@@ -117,7 +118,7 @@ def get_gradient_penalty_from_gradient(gradient: torch.Tensor) -> torch.Tensor:
     :return: a scalar torch.Tensor object containing the gradient penalty
     """
     # Flatten the gradients so that each row captures one image
-    gradient = gradient.view(len(gradient), -1)
+    gradient = gradient.view(gradient.shape[0], -1)
     # Calculate the magnitude of every row
     gradient_norm = gradient.norm(2, dim=1)
     # Penalize the mean squared distance of the gradient norms from 1

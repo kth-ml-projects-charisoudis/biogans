@@ -21,7 +21,6 @@ from utils.command_line_logger import CommandLineLogger
 from utils.filesystems.gdrive import GDriveDataset
 from utils.filesystems.local import LocalCapsule, LocalFilesystem, LocalFolder
 from utils.ifaces import FilesystemFolder
-from utils.pytorch import RandomVerticalFlip
 from utils.string import to_human_readable
 
 
@@ -101,7 +100,7 @@ class LINDataset(Dataset, GDriveDataset):
                           f'(train={train_not_test} | which={which_classes})')
         # Save transforms
         self._transforms = None
-        self.transforms = image_transforms
+        self.transforms = None
         self.return_path = return_path
 
     @property
@@ -112,8 +111,8 @@ class LINDataset(Dataset, GDriveDataset):
     def transforms(self, t: Optional[Compose] = None) -> None:
         if t is None:  # load default transforms
             self._transforms = transforms.Compose([
-                transforms.RandomHorizontalFlip(),
-                RandomVerticalFlip(),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomVerticalFlip(p=0.5),
                 transforms.ToTensor(),
                 transforms.Normalize(0.5, 0.5)
             ])
