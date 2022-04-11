@@ -178,7 +178,8 @@ def weights_init_naive(module: nn.Module) -> None:
     """
     if isinstance(module, nn.Conv2d) or isinstance(module, nn.ConvTranspose2d):
         torch.nn.init.xavier_normal_(module.weight)
-        torch.nn.init.constant_(module.bias, 1e-6)
-    if isinstance(module, nn.BatchNorm2d):
-        torch.nn.init.xavier_normal_(module.weight)
-        torch.nn.init.constant_(module.bias, 1e-6)
+        if module.bias is not None:
+            torch.nn.init.constant_(module.bias, 1e-6)
+    elif isinstance(module, nn.BatchNorm2d):
+        nn.init.normal_(module.weight, 1.0, 0.02)
+        nn.init.constant_(module.bias, 0)
