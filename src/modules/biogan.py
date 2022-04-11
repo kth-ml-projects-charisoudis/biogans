@@ -306,11 +306,11 @@ class OneClassBioGan(nn.Module, IGanGModule):
         ########   Update Discriminator   ########
         ##########################################
         with self.gen.frozen():
+            z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
             for di in range(self.n_disc_iters):
                 self.disc_opt.zero_grad()  # Zero out discriminator gradient (before backprop)
-                z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
-                g_out = self.gen(z)
-                disc_loss = self.disc.get_loss_both(real=x, fake=g_out.detach())
+                g_out = self.gen(z.clone())
+                disc_loss = self.disc.get_loss_both(real=x.clone(), fake=g_out.detach())
                 disc_loss.backward(retain_graph=True)  # Update discriminator gradients
                 self.disc_opt.step()  # Update discriminator weights
                 # Update LR (if needed)

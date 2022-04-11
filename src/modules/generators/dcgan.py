@@ -63,7 +63,7 @@ class DCGanGenerator(nn.Module, BalancedFreezable):
         return self.gen(z.reshape([z.shape[0], -1, 1, 1]))
 
     def get_random_z(self, batch_size: int = 1, device='cpu') -> torch.Tensor:
-        return torch.randn(batch_size, self.z_dim, device=device)
+        return torch.randn(batch_size, self.z_dim, device=device, requires_grad=True)
 
     def load_aosokin_state_dict(self, state_dict: OrderedDictT[str, torch.Tensor], class_idx: int = 0):
         self_keys = [k for k in self.state_dict().keys() if not k.endswith('num_batches_tracked')]

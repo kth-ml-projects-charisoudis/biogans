@@ -405,7 +405,7 @@ class ToNumpy:
         # convert to numpy array
         img = np.array(img.getdata()).reshape((img.size[1], img.size[0], 3))
         # permute dimensions
-        img = np.transpose(img, (2, 0, 1)).copy()
+        img = np.transpose(img.copy(), (2, 0, 1))
         return img
 
 
