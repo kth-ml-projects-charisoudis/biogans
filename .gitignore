@@ -1,5 +1,5 @@
 .idea
 data/LIN*
 .gdrive_personal
-aoskin_checkpoints/*
-!aoskin_checkpoints/.gitkeep
+aosokin_checkpoints/*
+!aosokin_checkpoints/.gitkeep

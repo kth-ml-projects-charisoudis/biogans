@@ -100,7 +100,7 @@ class OneClassBioGan(nn.Module, IGanGModule):
                                                  be loaded via `nn.Module().load_state_dict()`
         :param (int or str or None) chkpt_step: if not `None` then the model checkpoint at the given :attr:`step` and at
                                          the given :attr:`batch_size` will be loaded via `nn.Module().load_state_dict()`
-                                         call. If you have aoskin chkpt path, pass it here as "aoskin:<path>".
+                                         call. If you have aosokin chkpt path, pass it here as "aosokin:<path>".
         :param (str) device: the device used for training (supported: "cuda", "cuda:<GPU_INDEX>", "cpu")
         :param (Compose) gen_transforms: the image transforms of the dataset the generator is trained on (used in
                                          visualization)
@@ -143,26 +143,26 @@ class OneClassBioGan(nn.Module, IGanGModule):
 
         # Load checkpoint from Google Drive
         self.other_state_dicts = {}
-        if chkpt_step is not None and chkpt_step.startswith('aoskin') or \
-                chkpt_epoch is not None and chkpt_epoch.startswith('aoskin'):
-            # load aoskin checkpoint in generator
-            _, aoskin_path = chkpt_step.split(':') if chkpt_step is not None else chkpt_epoch.split(':')
-            if os.path.basename(aoskin_path) == 'auto':
-                aoskin_path = aoskin_path.replace(
+        if chkpt_step is not None and chkpt_step.startswith('aosokin') or \
+                chkpt_epoch is not None and chkpt_epoch.startswith('aosokin'):
+            # load aosokin checkpoint in generator
+            _, aosokin_path = chkpt_step.split(':') if chkpt_step is not None else chkpt_epoch.split(':')
+            if os.path.basename(aosokin_path) == 'auto':
+                aosokin_path = aosokin_path.replace(
                     '/auto',
                     f'/size-48-80_6class_{config_id.replace("wgan-gp", "wgangp")}-adam/netG_iter_50000.pth'
                 )
-                if not os.path.exists(aoskin_path):
+                if not os.path.exists(aosokin_path):
                     # try downloading file
-                    p = pathlib.Path(aoskin_path)
+                    p = pathlib.Path(aosokin_path)
                     p.parent.mkdir(parents=True, exist_ok=True)
                     wget.download(
                         f'http://www.di.ens.fr/sierra/research/biogans/models/{p.relative_to(p.parent.parent)}',
                         out=str(p.parent.absolute()))
             self.protein_class_index = self.__class__.PROTEIN_CLASS_INDICES[self.__class__.PROTEIN_CLASS]
-            self.logger.debug(f'Loading AOSKIN checkpoint (class={self.protein_class_index}): {aoskin_path}')
-            self.gen.load_aoskin_state_dict(state_dict=torch.load(aoskin_path, map_location='cpu'),
-                                            class_idx=self.protein_class_index)
+            self.logger.debug(f'Loading AOSOKIN checkpoint (class={self.protein_class_index}): {aosokin_path}')
+            self.gen.load_aosokin_state_dict(state_dict=torch.load(aosokin_path, map_location='cpu'),
+                                             class_idx=self.protein_class_index)
             # TODO: what should be loaded at the Discriminator after this?
             chkpt_epoch = 3200
         elif chkpt_epoch is not None:
@@ -446,7 +446,7 @@ if __name__ == '__main__':
     evaluator = GanEvaluator(model_fs_folder_or_root=_models_groot, gen_dataset=dataset, target_index=1,
                              device=exec_device, condition_indices=(0, 2), n_samples=2, batch_size=2, f1_k=2)
     #   - initialize model
-    _chkpt_step = f'aoskin:{PROJECT_DIR_PATH}/aoskin_checkpoints/auto'
+    _chkpt_step = f'aosokin:{PROJECT_DIR_PATH}/aosokin_checkpoints/auto'
     # chkpt_step = None
     # try:
     #     if chkpt_step == 'latest':
