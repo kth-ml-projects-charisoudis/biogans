@@ -214,6 +214,9 @@ def invert_transforms(ts: transforms.Compose) -> transforms.Compose:
             # We reached the ToTensor() transform; no point in continuing inverting upwards where the image was still a
             # PIL image object
             break
+        elif type(t) == LinToTensorNormalized:
+            tt = t.normalize
+            inverse_transforms_list.append(UnNormalize(mean=tt.mean, std=tt.std, inplace=tt.inplace))
     return transforms.Compose(inverse_transforms_list)
 
 

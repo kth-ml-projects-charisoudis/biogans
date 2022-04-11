@@ -9,6 +9,7 @@ import click
 import numpy as np
 import torch
 from PIL import Image, UnidentifiedImageError
+from matplotlib import pyplot as plt
 from torch import Tensor
 # noinspection PyProtectedMember
 from torch.utils.data import Dataset, DataLoader
@@ -20,7 +21,7 @@ from utils.command_line_logger import CommandLineLogger
 from utils.filesystems.gdrive import GDriveDataset
 from utils.filesystems.local import LocalCapsule, LocalFilesystem, LocalFolder
 from utils.ifaces import FilesystemFolder
-from utils.pytorch import LinToTensorNormalized, ToNumpy
+from utils.pytorch import LinToTensorNormalized, ToNumpy, invert_transforms
 from utils.string import to_human_readable
 
 
@@ -834,12 +835,12 @@ class LINNearestNeighborsScraper:
 
 if __name__ == '__main__':
     _local_gdrive_root = '/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.gdrive_personal'
-    if click.confirm('Do you want to (re)scrape the dataset now?', default=True):
-        # # Scape images to create info files
-        # LINScraper.run(forward_pass=True, backward_pass=True)
-        # Scrape nearest neighbors of each image in the training set
-        LINNearestNeighborsScraper.run(_local_gdrive_root, k=5, forward_pass=False, backward_pass=False,
-                                       generate_images=True)
+    # if click.confirm('Do you want to (re)scrape the dataset now?', default=True):
+    #     # Scape images to create info files
+    #     LINScraper.run(forward_pass=True, backward_pass=True)
+    #     # Scrape nearest neighbors of each image in the training set
+    #     LINNearestNeighborsScraper.run(_local_gdrive_root, k=5, forward_pass=False, backward_pass=False,
+    #                                    generate_images=True)
 
     # Via locally-mounted Google Drive (when running from inside Google Colaboratory)
     _capsule = LocalCapsule(_local_gdrive_root)
@@ -851,6 +852,15 @@ if __name__ == '__main__':
     #                        logger=_lin_train.logger)
     _lin_alp14_train = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=True, which_classes='Alp14',
                                   logger=_lin_train.logger)
+    s = _lin_alp14_train[0]
+    s3 = torch.concat((s, -torch.ones((1, 48, 80))), dim=0)
+    s3 = invert_transforms(_lin_alp14_train.transforms)(s3)
+    plt.imshow(s3.numpy().transpose(1, 2, 0))
+    plt.show()
+    plt.imshow(s[0].numpy().reshape(48, 80), cmap="Reds")
+    plt.show()
+    plt.imshow(s[1].numpy().reshape(48, 80), cmap="Greens")
+    plt.show()
     # _lin_alp14_test = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=False, which_classes='Alp14',
     #                              logger=_lin_train.logger)
     # # _lin.fetch_and_unzip()

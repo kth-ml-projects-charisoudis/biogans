@@ -169,17 +169,23 @@ def train_test_split(dataset: Union[Dataset, Sized], splits: list, seed: int = 4
     return train_set, test_set
 
 
-def weights_init_naive(module: nn.Module) -> None:
+def weights_init_naive(m: nn.Module) -> None:
     """
     Apply naive weight initialization in given nn.Module. Should be called like network.apply(weights_init_naive).
     This naive approach simply sets all biases to 0 and all weights to the output of normal distribution with mean of 0
     and a std of 5e-2.
-    :param module: input module
+    :param m: input module
     """
-    if isinstance(module, nn.Conv2d) or isinstance(module, nn.ConvTranspose2d):
-        torch.nn.init.xavier_normal_(module.weight)
-        if module.bias is not None:
-            torch.nn.init.constant_(module.bias, 1e-6)
-    elif isinstance(module, nn.BatchNorm2d):
-        nn.init.normal_(module.weight, 1.0, 0.02)
-        nn.init.constant_(module.bias, 0)
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        m.weight.data.normal_(0.0, 0.02)
+    elif classname.find('BatchNorm') != -1:
+        m.weight.data.normal_(1.0, 0.02)
+        m.bias.data.fill_(0)
+    # if isinstance(module, nn.Conv2d) or isinstance(module, nn.ConvTranspose2d):
+    #     torch.nn.init.xavier_normal_(module.weight)
+    #     if module.bias is not None:
+    #         torch.nn.init.constant_(module.bias, 1e-6)
+    # elif isinstance(module, nn.BatchNorm2d):
+    #     nn.init.normal_(module.weight, 1.0, 0.02)
+    #     nn.init.constant_(module.bias, 0)
