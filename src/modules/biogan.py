@@ -305,7 +305,6 @@ class OneClassBioGan(nn.Module, IGanGModule):
         ##########################################
         ########   Update Discriminator   ########
         ##########################################
-        self.logger.debug(f'n_disc_iters={self.n_disc_iters}')
         with self.gen.frozen():
             for di in range(self.n_disc_iters):
                 self.disc_opt.zero_grad()  # Zero out discriminator gradient (before backprop)
