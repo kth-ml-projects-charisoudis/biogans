@@ -59,7 +59,7 @@ class DCGanGenerator(nn.Module, BalancedFreezable):
         self.z_dim = z_dim
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
-        assert z.dim() == 2, f'z must be 2-dimensional ({z.dim()}-d tensor provided)'
+        # assert z.dim() == 2, f'z must be 2-dimensional ({z.dim()}-d tensor provided)'
         return self.gen(z.reshape([z.shape[0], -1, 1, 1]))
 
     def get_random_z(self, batch_size: int = 1, device='cpu') -> torch.Tensor:
