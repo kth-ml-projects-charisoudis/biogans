@@ -301,25 +301,24 @@ class OneClassBioGan(nn.Module, IGanGModule):
         # Update gdrive model state
         batch_size = x.shape[0]
         self.gforward(batch_size)
-        self.gen_opt.zero_grad()
 
         ##########################################
         ########   Update Discriminator   ########
         ##########################################
-        with self.gen.frozen():
-            for di in range(self.n_disc_iters):
-                self.disc_opt.zero_grad()  # Zero out discriminator gradient (before backprop)
-                z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
-                g_out = self.gen(z)
-                disc_loss = self.disc.get_loss_both(real=x, fake=g_out.detach())
-                disc_loss.backward(retain_graph=True)  # Update discriminator gradients
-                self.disc_opt.step()  # Update discriminator weights
-                # Update LR (if needed)
-                if self.disc_opt_lr_scheduler:
-                    if isinstance(self.disc_opt_lr_scheduler, ReduceLROnPlateau):
-                        self.disc_opt_lr_scheduler.step(metrics=disc_loss)
-                    else:
-                        self.disc_opt_lr_scheduler.step()
+        self.logger.debug(f'n_disc_iters={self.n_disc_iters}')
+        for di in range(self.n_disc_iters):
+            self.disc_opt.zero_grad()  # Zero out discriminator gradient (before backprop)
+            z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
+            g_out = self.gen(z)
+            disc_loss = self.disc.get_loss_both(real=x, fake=g_out.detach())
+            disc_loss.backward(retain_graph=True)  # Update discriminator gradients
+            self.disc_opt.step()  # Update discriminator weights
+            # Update LR (if needed)
+            if self.disc_opt_lr_scheduler:
+                if isinstance(self.disc_opt_lr_scheduler, ReduceLROnPlateau):
+                    self.disc_opt_lr_scheduler.step(metrics=disc_loss)
+                else:
+                    self.disc_opt_lr_scheduler.step()
 
         ##########################################
         ########     Update Generator     ########
