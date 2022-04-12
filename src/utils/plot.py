@@ -18,7 +18,8 @@ from utils.filesystems.gdrive.remote import GDriveFolder
 
 
 def create_img_grid(images: torch.Tensor, ncols: Optional[int] = None, nrows: Optional[int] = None, border: int = 2,
-                    black: float = 0.5, gen_transforms: Optional[transforms.Compose] = None) -> torch.Tensor:
+                    black: float = 0.5, white_border_right: bool = False,
+                    gen_transforms: Optional[transforms.Compose] = None) -> torch.Tensor:
     """
     :param (torch.Tensor) images: torch.Tensor object of shape N x (CxHxW) (similar to training tensors)
     :param (int) ncols:
@@ -78,16 +79,30 @@ def create_img_grid(images: torch.Tensor, ncols: Optional[int] = None, nrows: Op
             if c == 0:
                 _rlist.append(black * torch.ones(3, _rheight, border).float())  # |□|□...
         _rlist.append(black * torch.ones(3, _rheight, border).float())  # |□|□...□|
+        if white_border_right:
+            _rlist.append(torch.ones(3, _rheight, 4 * border).float())  # |
         row_images.append(torch.cat(_rlist, dim=2).cpu())
 
     # Join row-images to form the final image
     _list = []
     for ri in row_images:
-        _list.append(black * torch.ones(3, border, ri.shape[2]).float())  # ___
+        vb = black * torch.ones(3, border, ri.shape[2]).float()
+        if white_border_right:
+            vb[:, :, -4 * border:] = 1.0
+        _list.append(vb)  # ___
         _list.append(ri)  # |□|
-        _list.append(black * torch.ones(3, border, ri.shape[2]).float())  # ---
+        _list.append(vb)  # ---
         _list.append(1.0 * torch.ones(3, 4 * border, ri.shape[2]).float())  # (gap)
     return torch.cat(_list[:-1], dim=1).cpu()
+
+
+def create_img_grid_6class(x0: list, g0: list, g1: list, border: int = 2, black: float = 0.5) -> torch.Tensor:
+    grids = []
+    for class_idx in range(6):
+        grids.append(create_img_grid(images=torch.stack([
+            x0[class_idx], g0[class_idx], g1[class_idx]
+        ]), gen_transforms=None, border=border, black=black, white_border_right=class_idx < 5))
+    return torch.cat(grids, dim=2)
 
 
 def ensure_matplotlib_fonts_exist(groot: GDriveFolder, force_rebuild: bool = False) -> bool:
@@ -168,6 +183,7 @@ def plot_grid(grid: torch.Tensor or np.ndarray, figsize=tuple, footnote_l: Optio
     if footnote_l:
         plt.suptitle(footnote_l, y=0.03, fontsize=4, fontweight='light', horizontalalignment='left', x=0.001)
     plt.imshow(grid.permute(1, 2, 0) if isinstance(grid, torch.Tensor) else np.transpose(grid, (1, 2, 0)))
+    plt.tight_layout()
     # Show the right footnote
     fig: matplotlib.figure.Figure
     fig = plt.gcf()

@@ -63,7 +63,7 @@ class DCGanGenerator(nn.Module, BalancedFreezable):
         return self.gen(z.reshape([z.shape[0], -1, 1, 1]))
 
     def get_random_z(self, batch_size: int = 1, device='cpu') -> torch.Tensor:
-        return torch.randn(batch_size, self.z_dim, device=device, requires_grad=True)
+        return torch.randn(batch_size, self.z_dim, device=device)
 
     def load_aosokin_state_dict(self, state_dict: OrderedDictT[str, torch.Tensor], class_idx: int = 0):
         self_keys = [k for k in self.state_dict().keys() if not k.endswith('num_batches_tracked')]
@@ -87,6 +87,37 @@ class SeparableDCGanGenerator(DCGanGenerator):
         self.c_out_green = c_out - self.c_out_red
 
 
+class DCGanGeneratorInd6Class(nn.Module, BalancedFreezable):
+    def __init__(self, c_out: int = 2, z_dim: int = 100, norm_type: str = 'batch', c_hidden: int = 512,
+                 n_extra_layers: int = 0, red_portion: Optional[float] = None):
+        # Initialize utils.ifaces.BalancedFreezable
+        BalancedFreezable.__init__(self)
+        # Initialize torch.nn.Module
+        nn.Module.__init__(self)
+        # Initialize all generators
+        self.gens = nn.ModuleList([
+            DCGanGenerator(c_out=c_out, z_dim=z_dim, norm_type=norm_type, c_hidden=c_hidden,
+                           n_extra_layers=n_extra_layers, red_portion=red_portion)
+            for _ in range(6)
+        ])
+        self.z_dim = z_dim
+
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        out = [None] * 6
+        for i_class in range(6):
+            out[i_class] = self.gens[i_class](z.clone())
+        return torch.stack(out, dim=0)
+
+    def get_random_z(self, batch_size: int = 1, device='cpu') -> torch.Tensor:
+        return self.gens[0].get_random_z(batch_size, device)
+
+    def load_aosokin_state_dict(self, state_dict: OrderedDictT[str, torch.Tensor], logger=None):
+        for class_idx in range(6):
+            if logger:
+                logger.debug(f'    - loading class={class_idx}')
+            self.gens[class_idx].load_aosokin_state_dict(state_dict, class_idx)
+
+
 if __name__ == '__main__':
     # _gen = DCGanGenerator(c_out=6 + 1, z_dim=100, n_extra_layers=2)
     # _z = torch.randn(10, 100)
@@ -103,7 +134,7 @@ if __name__ == '__main__':
     get_total_params(_gen, True, True)
 
     # with open('/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.gdrive_personal/Models/model_name' +
-    #           '=oneclassbiogan_alp14/Configurations/wgan-gp-independent-sep.yaml') as fp:
+    #           '=BioGanInd1class_alp14/Configurations/wgan-gp-independent-sep.yaml') as fp:
     #     config = yaml.load(fp, Loader=yaml.FullLoader)
     # _gen = DCGanGenerator(**config['gen'])
     # chkpt_path = '/aosokin_wgan_id_sep.pth'

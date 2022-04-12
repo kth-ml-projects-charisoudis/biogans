@@ -12,20 +12,21 @@ from torch import nn, Tensor
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchvision.transforms import Compose
 
-from modules.discriminators.dcgan import DCGanDiscriminator
-from modules.generators.dcgan import DCGanGenerator
+from modules.discriminators.dcgan import DCGanDiscriminator, DCGanDiscriminatorInd6Class
+from modules.generators.dcgan import DCGanGenerator, DCGanGeneratorInd6Class
 from modules.ifaces import IGanGModule
 from utils.ifaces import FilesystemFolder
 from utils.metrics import GanEvaluator
-from utils.plot import create_img_grid, plot_grid
-from utils.train import get_optimizer, set_optimizer_lr, weights_init_naive, get_optimizer_lr_scheduler
+from utils.plot import create_img_grid, plot_grid, create_img_grid_6class
+from utils.pytorch import invert_transforms, ToTensorOrPass
+from utils.train import get_optimizer, set_optimizer_lr, weights_init_naive
 
 PROJECT_DIR_PATH = pathlib.Path(__file__).parent.parent.parent.resolve()
 
 
-class OneClassBioGan(nn.Module, IGanGModule):
+class BioGanInd1class(nn.Module, IGanGModule):
     """
-    OneClassBioGan Class:
+    BioGanInd1class Class:
     This class is used to access and use the entire 1-class BioGAN model (implemented according to the paper "GANs for
     Biological Image Synthesis") as a `nn.Module` instance but with additional functionality provided from inheriting
     `utils.gdrive.GDriveModel` (through the `utils.ifaces.IGanGModule` interface). Inheriting GDriveModel enables easy
@@ -180,26 +181,25 @@ class OneClassBioGan(nn.Module, IGanGModule):
             # Initialize weights with small values
             self.gen = self.gen.apply(weights_init_naive)
             self.disc = self.disc.apply(weights_init_naive)
-            chkpt_epoch = 0
 
-        # Define LR schedulers (after optimizer checkpoints have been loaded)
-        if gen_opt_conf['scheduler_type']:
-            if gen_opt_conf['scheduler_type'] == 'cyclic':
-                self.gen_opt_lr_scheduler = get_optimizer_lr_scheduler(
-                    self.gen_opt, schedule_type=str(gen_opt_conf['scheduler_type']), base_lr=0.1 * gen_opt_conf['lr'],
-                    max_lr=gen_opt_conf['lr'], step_size_up=2 * dataset_len if evaluator else 1000, mode='exp_range',
-                    gamma=0.9, cycle_momentum=False,
-                    last_epoch=chkpt_epoch if 'initial_lr' in self.gen_opt.param_groups[0].keys() else -1)
-            else:
-                self.gen_opt_lr_scheduler = get_optimizer_lr_scheduler(self.gen_opt,
-                                                                       schedule_type=gen_opt_conf['scheduler_type'])
-        else:
-            self.gen_opt_lr_scheduler = None
-        if disc_opt_conf['scheduler_type']:
-            self.disc_opt_lr_scheduler = get_optimizer_lr_scheduler(self.disc_opt,
-                                                                    schedule_type=disc_opt_conf['scheduler_type'])
-        else:
-            self.disc_opt_lr_scheduler = None
+        # # Define LR schedulers (after optimizer checkpoints have been loaded)
+        # if gen_opt_conf['scheduler_type']:
+        #     if gen_opt_conf['scheduler_type'] == 'cyclic':
+        #         self.gen_opt_lr_scheduler = get_optimizer_lr_scheduler(
+        #             self.gen_opt, schedule_type=str(gen_opt_conf['scheduler_type']), base_lr=0.1 * gen_opt_conf['lr'],
+        #             max_lr=gen_opt_conf['lr'], step_size_up=2 * dataset_len if evaluator else 1000, mode='exp_range',
+        #             gamma=0.9, cycle_momentum=False,
+        #             last_epoch=chkpt_epoch if 'initial_lr' in self.gen_opt.param_groups[0].keys() else -1)
+        #     else:
+        #         self.gen_opt_lr_scheduler = get_optimizer_lr_scheduler(self.gen_opt,
+        #                                                                schedule_type=gen_opt_conf['scheduler_type'])
+        # else:
+        #     self.gen_opt_lr_scheduler = None
+        # if disc_opt_conf['scheduler_type']:
+        #     self.disc_opt_lr_scheduler = get_optimizer_lr_scheduler(self.disc_opt,
+        #                                                             schedule_type=disc_opt_conf['scheduler_type'])
+        # else:
+        #     self.disc_opt_lr_scheduler = None
 
         self.gen_opt_lr_scheduler = None
         self.disc_opt_lr_scheduler = None
@@ -409,8 +409,251 @@ class OneClassBioGan(nn.Module, IGanGModule):
                                     f'disc_loss={"{0:0.3f}".format(round(np.mean(self.disc_losses).item(), 3))}')
 
 
+class BioGanInd6Class(nn.Module, IGanGModule):
+    IS_SEPARABLE = False
+
+    @classmethod
+    def version(cls) -> str:
+        return 'sep' if cls.IS_SEPARABLE else ''
+
+    def __init__(self, model_fs_folder_or_root: FilesystemFolder, config_id: Optional[str] = None,
+                 chkpt_epoch: Optional[int or str] = None, chkpt_step: Optional[int or str] = None,
+                 device: torch.device or str = 'cpu', gen_transforms: Optional[Compose] = None, log_level: str = 'info',
+                 dataset_len: Optional[int] = None, reproducible_indices: Sequence = (0, -1),
+                 evaluator: Optional[GanEvaluator] = None, **evaluator_kwargs):
+        self.device = device
+        self.__class__.IS_SEPARABLE = config_id is not None and 'sep' in config_id
+        # Initialize interface
+        IGanGModule.__init__(self, model_fs_folder_or_root, config_id, device=device, log_level=log_level,
+                             dataset_len=dataset_len, reproducible_indices=reproducible_indices,
+                             evaluator=evaluator, **evaluator_kwargs)
+        # Instantiate torch.nn.Module class
+        nn.Module.__init__(self)
+
+        # Define BioGAN model
+        #   - generators
+        gen_conf = self._configuration['gen']
+        gen_conf['c_out'] = 2
+        self.gen = DCGanGeneratorInd6Class(**gen_conf)
+        #   - discriminators
+        disc_conf = self._configuration['disc']
+        disc_conf['c_in'] = 2
+        self.disc = DCGanDiscriminatorInd6Class(**disc_conf)
+
+        # Define optimizers
+        gen_opt_conf = self._configuration['gen_opt']
+        self.gen_opt, _ = get_optimizer(self.gen, **gen_opt_conf)
+        disc_opt_conf = self._configuration['disc_opt']
+        self.disc_opt, _ = get_optimizer(self.disc, **disc_opt_conf)
+
+        # Move models to {C,G,T}PU
+        self.gen.to(device)
+        self.disc.to(device)
+
+        # Load checkpoint from Google Drive
+        self.other_state_dicts = {}
+        if chkpt_step is not None and chkpt_step.startswith('aosokin') or \
+                chkpt_epoch is not None and chkpt_epoch.startswith('aosokin'):
+            # load aosokin checkpoint in generator
+            _, aosokin_path = chkpt_step.split(':') if chkpt_step is not None else chkpt_epoch.split(':')
+            if os.path.basename(aosokin_path) == 'auto':
+                aosokin_path = aosokin_path.replace(
+                    '/auto',
+                    f'/size-48-80_6class_{config_id.replace("wgan-gp", "wgangp")}-adam/netG_iter_50000.pth'
+                )
+                if not os.path.exists(aosokin_path):
+                    # try downloading file
+                    p = pathlib.Path(aosokin_path)
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    wget.download(
+                        f'http://www.di.ens.fr/sierra/research/biogans/models/{p.relative_to(p.parent.parent)}',
+                        out=str(p.parent.absolute()))
+            self.logger.debug(f'Loading AOSOKIN checkpoint: {aosokin_path}')
+            self.gen.load_aosokin_state_dict(torch.load(aosokin_path, map_location='cpu'), logger=self.logger)
+            # TODO: what should be loaded at the Discriminator after this?
+            chkpt_epoch = 3200
+        elif chkpt_epoch is not None:
+            try:
+                chkpt_filepath = self.fetch_checkpoint(epoch_or_id=chkpt_epoch, step=chkpt_step)
+                self.logger.debug(f'Loading checkpoint file: {chkpt_filepath}')
+                _state_dict = torch.load(chkpt_filepath, map_location='cpu')
+                self.load_state_dict(_state_dict)
+                if 'gforward' in _state_dict.keys():
+                    self.load_gforward_state(_state_dict['gforward'])
+            except FileNotFoundError as e:
+                self.logger.critical(str(e))
+                chkpt_epoch = None
+        if not chkpt_epoch:
+            # Initialize weights with small values
+            self.gen = self.gen.apply(weights_init_naive)
+            self.disc = self.disc.apply(weights_init_naive)
+
+        # No LR schedulers
+        self.gen_opt_lr_scheduler = None
+        self.disc_opt_lr_scheduler = None
+
+        # Save transforms for visualizer
+        if gen_transforms is not None:
+            self.gen_transforms = gen_transforms
+            self.inv_transforms = invert_transforms(self.gen_transforms)
+        else:
+            self.inv_transforms = ToTensorOrPass()
+
+            # Initialize params
+        self.g_out = None
+        self.x = None
+        self.device = device
+        self.n_disc_iters = self._configuration.get('n_disc_iters', 1)
+
+    def load_configuration(self, configuration: dict) -> None:
+        IGanGModule.load_configuration(self, configuration)
+
+    #
+    # ------------
+    # nn.Module
+    # -----------
+    #
+
+    ##################################
+    ## Checkpointing
+    #################################
+
+    def load_state_dict(self, state_dict: dict, strict: bool = True):
+        # Check if checkpoint is for different config
+        if 'config_id' in state_dict.keys() and state_dict['config_id'] != self.config_id:
+            self.logger.critical(f'Config IDs mismatch (self: "{self.config_id}", state_dict: '
+                                 f'"{state_dict["config_id"]}"). NOT applying checkpoint.')
+            if not click.confirm('Override config_id in checkpoint and attempt to load it?', default=False):
+                return
+        # Load model checkpoints
+        # noinspection PyTypeChecker
+        self.gen.load_state_dict(state_dict['gen'])
+        self.gen_opt.load_state_dict(state_dict['gen_opt'])
+        self.disc.load_state_dict(state_dict['disc'])
+        self.disc_opt.load_state_dict(state_dict['disc_opt'])
+        self._nparams = state_dict['nparams']
+        # Update the latest metrics with checkpoint's metrics
+        if 'metrics' in state_dict.keys():
+            self.latest_metrics = state_dict['metrics']
+        self.logger.debug(f'State dict loaded. Keys: {tuple(state_dict.keys())}')
+        for _k in [_k for _k in state_dict.keys() if _k not in ('gen', 'gen_opt', 'disc', 'disc_opt', 'configuration')]:
+            self.other_state_dicts[_k] = state_dict[_k]
+
+    def state_dict(self, *args, **kwargs) -> dict:
+        """
+        In this method we define the state dict, i.e. the model checkpoint that will be saved to the .pth file.
+        :param args: see `nn.Module.state_dict()`
+        :param kwargs: see `nn.Module.state_dict()`
+        :return: see `nn.Module.state_dict()`
+        """
+        mean_gen_loss = np.mean(self.gen_losses)
+        self.gen_losses.clear()
+        mean_disc_loss = np.mean(self.disc_losses)
+        self.disc_losses.clear()
+        return {
+            'gen': self.gen.state_dict(),
+            'gen_loss': mean_gen_loss,
+            'gen_opt': self.gen_opt.state_dict(),
+            'disc': self.disc.state_dict(),
+            'disc_loss': mean_disc_loss,
+            'disc_opt': self.disc_opt.state_dict(),
+            'nparams': self.nparams,
+            'nparams_hr': self.nparams_hr,
+            'config_id': self.config_id,
+            'configuration': self._configuration,
+        }
+
+    ##################################
+    ## Training
+    #################################
+
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
+        # Update gdrive model state
+        batch_size = x.shape[1]
+        self.gforward(batch_size)
+
+        ##########################################
+        ########   Update Discriminator   ########
+        ##########################################
+        with self.gen.frozen():
+            for _ in range(self.n_disc_iters):
+                self.disc_opt.zero_grad()  # Zero out discriminator gradient (before backprop)
+                z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
+                g_out = self.gen(z)
+                disc_loss = self.disc.get_loss_both(real=x.clone(), fake=g_out.detach())
+                disc_loss.backward()  # Update discriminator gradients
+                self.disc_opt.step()  # Update discriminator weights
+                # Update LR (if needed)
+                if self.disc_opt_lr_scheduler:
+                    if isinstance(self.disc_opt_lr_scheduler, ReduceLROnPlateau):
+                        self.disc_opt_lr_scheduler.step(metrics=disc_loss)
+                    else:
+                        self.disc_opt_lr_scheduler.step()
+
+        ##########################################
+        ########     Update Generator     ########
+        ##########################################
+        with self.disc.frozen():
+            self.gen_opt.zero_grad()
+            z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
+            g_out = self.gen(z)
+            gen_loss = self.disc.get_loss(x=g_out, is_real=True)
+            gen_loss.backward()  # Update generator gradients
+            self.gen_opt.step()  # Update generator weights
+            # Update LR (if needed)
+            if self.gen_opt_lr_scheduler:
+                if isinstance(self.gen_opt_lr_scheduler, ReduceLROnPlateau):
+                    self.gen_opt_lr_scheduler.step(metrics=gen_loss)
+                else:
+                    self.gen_opt_lr_scheduler.step()
+
+        # Save for visualization
+        self.g_out = g_out[:, ::len(g_out) - 1].detach().cpu()
+        self.x = x[:, ::len(x) - 1].detach().cpu()
+        self.gen_losses.append(gen_loss.item())
+        self.disc_losses.append(disc_loss.item())
+
+        return disc_loss, gen_loss
+
+    #
+    # --------------
+    # Visualizable
+    # -------------
+    #
+
+    # noinspection SpellCheckingInspection
+    def visualize_indices(self, indices: Union[int, tuple, Sequence]) -> Image:
+        raise NotImplementedError('Cannot really implement reproducibility in Noise-to-Image context.')
+
+    def visualize(self, reproducible: bool = False, dl=None) -> Image:
+        # Get first & last sample from saved images in self
+        if self.x is None or self.g_out is None:
+            assert dl is not None
+            self.x = next(iter(dl)).detach().cpu()
+            with torch.no_grad():
+                self.g_out = self.gen(self.gen.get_random_z(batch_size=self.x.shape[0], device=self.device)).cpu()
+        x_0 = self.x[:, 0, :, :, :]
+        g_out_0 = self.g_out[:, 0]
+        g_out__1 = self.g_out[:, -1]
+
+        # 1st row
+        x_0 = [self.inv_transforms(x_0[class_idx]) for class_idx in range(6)]
+        g_out_0 = [self.inv_transforms(g_out_0[class_idx]) for class_idx in range(6)]
+        g_out__1 = [self.inv_transforms(g_out__1[class_idx]) for class_idx in range(6)]
+
+        # Concat images to a 3x6 grid (each row is a separate generation, the columns contain real and generated images
+        # side-by-side)
+        grid = create_img_grid_6class(x_0, g_out_0, g_out__1)
+
+        # Plot
+        return plot_grid(grid=grid, figsize=(14, 2),
+                         footnote_l=f'epoch={str(self.epoch).zfill(3)} | step={str(self.step).zfill(10)}',
+                         footnote_r=f'gen_loss={"{0:0.3f}".format(round(np.mean(self.gen_losses).item(), 3))}, '
+                                    f'disc_loss={"{0:0.3f}".format(round(np.mean(self.disc_losses).item(), 3))}')
+
+
 if __name__ == '__main__':
-    from datasets.lin import LINDataloader
+    from datasets.lin import LINDataloader6Class
     from utils.filesystems.local import LocalFolder, LocalFilesystem, LocalCapsule
 
     # Get GoogleDrive root folder
@@ -426,7 +669,7 @@ if __name__ == '__main__':
     _datasets_groot = _groot.subfolder_by_name('Datasets')
 
     exec_device = 'cpu'
-    CLASS = 'Alp14'  # 'Alp14',  'Arp3', 'Cki2', 'Tea1'
+    # CLASS = 'Alp14'  # 'Alp14',  'Arp3', 'Cki2', 'Tea1'
 
     ###################################
     ###   Dataset Initialization    ###
@@ -434,16 +677,16 @@ if __name__ == '__main__':
     #   - the dataloader used to access the training dataset of cross-scale/pose image pairs at every epoch
     #     > len(dataloader) = <number of batches>
     #     > len(dataloader.dataset) = <number of total dataset items>
-    dataloader = LINDataloader(dataset_fs_folder_or_root=_datasets_groot, train_not_test=True,
-                               batch_size=2, which_classes=CLASS)
+    dataloader = LINDataloader6Class(dataset_fs_folder_or_root=_datasets_groot, train_not_test=True,
+                                     batch_size=2)
     dataset = dataloader.dataset
 
     ###################################
     ###    Models Initialization    ###
     ###################################
     #   - initialize evaluator instance (used to run GAN evaluation metrics: FID, IS, PRECISION, RECALL, F1 and SSIM)
-    evaluator = GanEvaluator(model_fs_folder_or_root=_models_groot, gen_dataset=dataset, target_index=1,
-                             device=exec_device, condition_indices=(0, 2), n_samples=2, batch_size=2, f1_k=2)
+    evaluator = GanEvaluator(model_fs_folder_or_root=_models_groot, gen_dataset=dataset, z_dim=100,
+                             device=exec_device, n_samples=2, batch_size=2, f1_k=2)
     #   - initialize model
     _chkpt_step = f'aosokin:{PROJECT_DIR_PATH}/aosokin_checkpoints/auto'
     # chkpt_step = None
@@ -456,16 +699,16 @@ if __name__ == '__main__':
     #         _chkpt_step = None
     # except NameError:
     #     _chkpt_step = None
-    OneClassBioGan.PROTEIN_CLASS = CLASS
-    biogan = OneClassBioGan(model_fs_folder_or_root=_models_groot, config_id='wgan-gp-independent-sep',
-                            dataset_len=len(dataset), chkpt_epoch=_chkpt_step, evaluator=evaluator, device=exec_device,
-                            log_level='debug', gen_transforms=dataloader.transforms)
+    biogan = BioGanInd6Class(model_fs_folder_or_root=_models_groot, config_id='wgan-gp-independent-sep',
+                             dataset_len=len(dataset), chkpt_epoch=_chkpt_step, evaluator=evaluator, device=exec_device,
+                             log_level='debug', gen_transforms=dataloader.transforms)
     # print(biogan.gen)
     biogan.logger.debug(f'Using device: {str(exec_device)}')
     biogan.logger.debug(f'Model initialized. Number of params = {biogan.nparams_hr}')
 
     # Test visualization
-    _disc_loss, _gen_loss = biogan(next(iter(dataloader)))
+    _x = next(iter(dataloader))
+    _disc_loss, _gen_loss = biogan(_x)
     print('disc_loss', _disc_loss, 'gen_loss', _gen_loss)
     biogan.visualize()
     plt.show()

@@ -134,6 +134,60 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
         return ['patch_gan_discriminator', ]
 
 
+class DCGanDiscriminatorInd6Class(nn.Module, BalancedFreezable, Verbosable):
+    def __init__(self, **disc_kwargs):
+        # Initialize utils.ifaces.BalancedFreezable
+        BalancedFreezable.__init__(self)
+        # Initialize torch.nn.Module
+        nn.Module.__init__(self)
+        # Initialize Discriminators
+        self.disc = nn.ModuleList([
+            DCGanDiscriminator(**disc_kwargs)
+            for _ in range(6)
+        ])
+        self.adv_criterion = self.disc[0].adv_criterion
+        self.gp_lambda = self.disc[0].gp_lambda
+        self.verbose_enabled = False
+
+    @property
+    def nparams_hr(self):
+        return to_human_readable(get_total_params(self))
+
+    def forward(self, x: Tensor) -> Tensor:
+        if self.verbose_enabled:
+            self.logger.debug(f'_: {x.shape}')
+        out = [None] * 6
+        for class_idx in range(6):
+            out[class_idx] = self.disc[class_idx](x[class_idx])
+        return torch.stack(out, dim=0)
+
+    # noinspection DuplicatedCode
+    def get_loss_both(self, real: Tensor, fake: Tensor) -> Tensor:
+        assert type(self.adv_criterion) == pytorch.WassersteinLoss
+        scores_r = self(real)
+        scores_f = self(fake)
+        gradient_penalties = get_gradient_penalty(disc=self, real=real.data, fake=fake.data)
+        while gradient_penalties.dim() < scores_r.dim():
+            gradient_penalties = gradient_penalties.unsqueeze(-1)
+
+        mean_dim = 0 if scores_r.dim() == 4 else 1
+        scores_r = scores_r.mean(mean_dim)
+        scores_f = scores_f.mean(mean_dim)
+        return torch.stack([
+            scores_r[class_idx] - scores_f[class_idx] + self.gp_lambda * gradient_penalties[class_idx]
+            for class_idx in range(6)
+        ], dim=0).mean()
+
+    # noinspection DuplicatedCode
+    def get_loss(self, x: Tensor, is_real: bool) -> Tensor:
+        assert type(self.adv_criterion) == pytorch.WassersteinLoss
+        scores_r = self(x)
+        return scores_r.mean() if is_real else -scores_r.mean()
+
+    def get_layer_attr_names(self) -> List[str]:
+        return [f'dcgan_disc_{i}' for i in range(6)]
+
+
 if __name__ == '__main__':
     _disc = DCGanDiscriminator(c_in=2, n_contracting_blocks=4, use_spectral_norm=True, adv_criterion='MSE',
                                output_kernel_size=(3, 5))

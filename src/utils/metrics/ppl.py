@@ -154,7 +154,7 @@ class PPL(nn.Module):
 
 
 if __name__ == '__main__':
-    from modules.biogan import OneClassBioGan
+    from modules.biogan import BioGanInd1class
     from utils.filesystems.local import LocalFolder, LocalFilesystem, LocalCapsule
 
     # Get GoogleDrive root folder
@@ -185,7 +185,7 @@ if __name__ == '__main__':
     ###    Models Initialization    ###
     ###################################
     #   - initialize model
-    biogan = OneClassBioGan(model_fs_folder_or_root=_models_groot, config_id='default',
+    biogan = BioGanInd1class(model_fs_folder_or_root=_models_groot, config_id='default',
                             chkpt_epoch=None, evaluator=None, device=exec_device, log_level='debug')
     biogan.logger.debug(f'Using device: {str(exec_device)}')
     biogan.logger.debug(f'Model initialized. Number of params = {biogan.nparams_hr}')

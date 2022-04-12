@@ -4,7 +4,7 @@ from multiprocessing.pool import ApplyResult
 from typing import Any, Union, List, Optional, Dict, Sequence, Type
 
 from PIL.Image import Image
-from torch import Tensor, nn
+from torch import Tensor
 
 
 class _IFaceTemplate(metaclass=abc.ABCMeta):
@@ -757,8 +757,8 @@ class BalancedFreezable(Freezable):
         self.unfreeze(force=True)
         self._freeze_requests_count = 0
 
+    # noinspection PyUnresolvedReferences
     def freeze(self, force: bool = False) -> None:
-        assert isinstance(self, nn.Module), 'self must be a nn.Module to apply freezing'
         if force:
             for p in self.parameters():
                 p.requires_grad = False
@@ -769,15 +769,14 @@ class BalancedFreezable(Freezable):
                     p.requires_grad = False
                 self._state = 'frozen'
 
+    # noinspection PyUnresolvedReferences
     def unfreeze(self, force: bool = False) -> None:
-        assert isinstance(self, nn.Module), 'self must be a nn.Module to apply freezing'
         if force:
             for p in self.parameters():
                 p.requires_grad = True
         else:
             self._freeze_requests_count -= 1
             if self._freeze_requests_count == 0:
-                assert isinstance(self, nn.Module), 'self must be a nn.Module to apply unfreezing'
                 for p in self.parameters():
                     p.requires_grad = True
                 self._state = 'unfrozen'

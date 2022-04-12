@@ -21,7 +21,7 @@ from utils.command_line_logger import CommandLineLogger
 from utils.filesystems.gdrive import GDriveDataset
 from utils.filesystems.local import LocalCapsule, LocalFilesystem, LocalFolder
 from utils.ifaces import FilesystemFolder
-from utils.pytorch import LinToTensorNormalized, ToNumpy, invert_transforms
+from utils.pytorch import LinToTensorNormalized, ToNumpy
 from utils.string import to_human_readable
 
 
@@ -152,6 +152,32 @@ class LINDataset(Dataset, GDriveDataset):
         return self.img_count
 
 
+class LINDataset6Class(Dataset):
+    def __init__(self, **ds_kwargs):
+        Dataset.__init__(self)
+        self.logger = CommandLineLogger(log_level=os.getenv('LOG_LEVEL', 'info'), name=self.__class__.__name__)
+        self.datasets = {}
+        self.dataset_lengths = {}
+        ds_kwargs['logger'] = self.logger
+        for class_name in LINDataset.Classes:
+            ds_kwargs['which_classes'] = class_name
+            self.datasets[class_name] = LINDataset(**ds_kwargs)
+            self.dataset_lengths[class_name] = len(self.datasets[class_name])
+
+    def __getitem__(self, index: int) -> torch.Tensor:
+        out = []
+        for class_name in LINDataset.Classes:
+            out.append(self.datasets[class_name][index % self.dataset_lengths[class_name]])
+        return torch.stack(out, dim=0)
+
+    def __len__(self) -> int:
+        return max(self.dataset_lengths.values())
+
+    @property
+    def transforms(self):
+        return self.datasets['Alp14'].transforms
+
+
 class LINNearestDataset(LINDataset):
     """
     LINNearestDataset Class:
@@ -246,6 +272,18 @@ class LINDataloader(DataLoader):
         # Instantiate dataloader
         DataLoader.__init__(self, dataset=dataset, **dl_kwargs)
         self.transforms = dataset.transforms
+
+
+class LINDataloader6Class(DataLoader):
+    def __init__(self, dataset_fs_folder_or_root: FilesystemFolder, image_transforms: Optional[Compose] = None,
+                 train_not_test: bool = True, logger: Optional[CommandLineLogger] = None, **dl_kwargs):
+        # Instantiate dataset
+        ds = LINDataset6Class(dataset_fs_folder_or_root=dataset_fs_folder_or_root, image_transforms=image_transforms,
+                              train_not_test=train_not_test, return_path=False, logger=logger)
+        # Instantiate dataloader
+        dl_kwargs['collate_fn'] = lambda batch: torch.stack(batch, dim=1)
+        DataLoader.__init__(self, dataset=ds, **dl_kwargs)
+        self.transforms = ds.datasets['Alp14'].transforms
 
 
 class LINNearestDataloader(DataLoader):
@@ -847,27 +885,38 @@ if __name__ == '__main__':
     _fs = LocalFilesystem(ccapsule=_capsule)
     _groot = LocalFolder.root(capsule_or_fs=_fs).subfolder_by_name('Datasets')
 
-    _lin_train = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=True, which_classes='6class')
-    # _lin_test = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=False, which_classes='6class',
-    #                        logger=_lin_train.logger)
-    _lin_alp14_train = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=True, which_classes='Alp14',
-                                  logger=_lin_train.logger)
-    s = _lin_alp14_train[0]
-    s3 = torch.concat((s, -torch.ones((1, 48, 80))), dim=0)
-    s3 = invert_transforms(_lin_alp14_train.transforms)(s3)
-    plt.imshow(s3.numpy().transpose(1, 2, 0))
-    plt.show()
-    plt.imshow(s[0].numpy().reshape(48, 80), cmap="Reds")
-    plt.show()
-    plt.imshow(s[1].numpy().reshape(48, 80), cmap="Greens")
-    plt.show()
-    # _lin_alp14_test = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=False, which_classes='Alp14',
-    #                              logger=_lin_train.logger)
-    # # _lin.fetch_and_unzip()
-    # _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Alp14')
-    # plt.imshow(_lin_nn_alp14[0][1:].reshape(48 * 6, 80), cmap="Greens")
+    # _lin_train = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=True, which_classes='6class')
+    # # _lin_test = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=False, which_classes='6class',
+    # #                        logger=_lin_train.logger)
+    # _lin_alp14_train = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=True, which_classes='Cki2')
+    # s = _lin_alp14_train[0]
+    # plt.imshow(s[0, :].reshape(48, 80), cmap="Reds")
     # plt.show()
-    # _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Alp14', reds_only=True)
-    # plt.imshow(_lin_nn_alp14[0].reshape(48 * 6, 80), cmap="Reds")
+    # s3 = torch.concat((s, -torch.ones((1, 48, 80))), dim=0)
+    # s3 = invert_transforms(_lin_alp14_train.transforms)(s3)
+    # plt.imshow(s3.numpy().transpose(1, 2, 0))
     # plt.show()
-    print(_lin_alp14_train[0].shape)
+    # plt.imshow(s[0].numpy().reshape(48, 80), cmap="Reds")
+    # plt.show()
+    # plt.imshow(s[1].numpy().reshape(48, 80), cmap="Greens")
+    # plt.show()
+    # # _lin_alp14_test = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=False, which_classes='Alp14',
+    # #                              logger=_lin_train.logger)
+    # # # _lin.fetch_and_unzip()
+    # # _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Alp14')
+    # # plt.imshow(_lin_nn_alp14[0][1:].reshape(48 * 6, 80), cmap="Greens")
+    # # plt.show()
+    # # _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Alp14', reds_only=True)
+    # # plt.imshow(_lin_nn_alp14[0].reshape(48 * 6, 80), cmap="Reds")
+    # # plt.show()
+    # print(_lin_alp14_train[0].shape)
+
+    lin6dl = LINDataloader6Class(_groot, train_not_test=True, batch_size=10)
+    batch = next(iter(lin6dl))
+    print(batch.shape)
+    plt.imshow(batch[:, 1, 0, :, :].reshape(48 * 6, 80), cmap="Reds")
+    plt.show()
+    # lin6ds = LINDataset6Class(dataset_fs_folder_or_root=_groot, train_not_test=True)
+    # print(lin6ds[0].shape)
+    # plt.imshow(lin6ds[4000][:, 0, :, :].reshape(48 * 6, 80), cmap="Reds")
+    # plt.show()

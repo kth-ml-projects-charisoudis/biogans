@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 
 from datasets.lin import LINDataloader
-from modules.biogan import OneClassBioGan
+from modules.biogan import BioGanInd1class
 from utils.filesystems.local import LocalFolder, LocalCapsule, LocalFile
 from utils.pytorch import get_total_params
 from utils.train import get_optimizer, train_test_split, \
@@ -119,7 +119,7 @@ class TestTrainUtils(unittest.TestCase):
         return gen_weights, disc_weights, gen_opt_params, disc_opt_params
 
     def test_load_model_chkpt(self) -> None:
-        biogan = OneClassBioGan(model_fs_folder_or_root=self.models_groot, config_id='default',
+        biogan = BioGanInd1class(model_fs_folder_or_root=self.models_groot, config_id='default',
                                 chkpt_epoch=88, chkpt_step=6000, device='cuda',
                                 dataset_len=len(self.dataloader.dataset), log_level='debug')
 
@@ -149,7 +149,7 @@ class TestTrainUtils(unittest.TestCase):
                                  show_progress=True)
 
         # Load checkpoint
-        biogan2 = OneClassBioGan(model_fs_folder_or_root=self.models_groot, config_id='default',
+        biogan2 = BioGanInd1class(model_fs_folder_or_root=self.models_groot, config_id='default',
                                  chkpt_epoch=88, chkpt_step=biogan.step, device=biogan.device,
                                  dataset_len=len(self.dataloader.dataset), log_level='debug',
                                  gen_transforms=self.dataloader.transforms)

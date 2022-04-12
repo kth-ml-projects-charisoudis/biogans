@@ -92,6 +92,7 @@ def get_gradient(disc: nn.Module, real: torch.Tensor, fake: torch.Tensor, epsilo
     """
     # Mix the images together
     mixed_images = real * epsilon + fake * (1 - epsilon)
+    mixed_images = torch.autograd.Variable(mixed_images, requires_grad=True)
 
     # Calculate the critic's scores on the mixed images
     mixed_scores = disc(mixed_images)
@@ -119,11 +120,20 @@ def get_gradient_penalty_from_gradient(gradient: torch.Tensor) -> torch.Tensor:
     :return: a scalar torch.Tensor object containing the gradient penalty
     """
     # Flatten the gradients so that each row captures one image
-    gradient = gradient.view(gradient.shape[0], -1)
+    if gradient.dim() == 5:
+        needs_unfold = (gradient.shape[0], gradient.shape[1])
+        gradient = gradient.view(gradient.shape[0] * gradient.shape[1], -1)
+    else:
+        needs_unfold = None
+        gradient = gradient.view(gradient.shape[0], -1)
     # Calculate the magnitude of every row
     gradient_norm = gradient.norm(2, dim=1)
     # Penalize the mean squared distance of the gradient norms from 1
-    return torch.mean((torch.ones_like(gradient_norm) - gradient_norm) ** 2)
+    gradient_penalties = (gradient_norm - 1) ** 2
+    if needs_unfold is not None:
+        gradient_penalties = gradient_penalties.view(*needs_unfold)
+        return torch.mean(gradient_penalties, dim=1)
+    return torch.mean(gradient_penalties, dim=0)
 
 
 def get_gradient_penalty(disc: nn.Module, real: torch.Tensor, fake: torch.Tensor,
@@ -139,7 +149,10 @@ def get_gradient_penalty(disc: nn.Module, real: torch.Tensor, fake: torch.Tensor
     """
     if epsilon is None:
         # if no epsilon param provided, use a random mixing weight for each pair of real/fake images in current batch
-        epsilon = torch.rand(real.shape[0], 1, 1, 1, device=real.device, requires_grad=True)
+        epsilon = torch.rand(real.size(0), real.size(1)) if real.dim() == 5 else torch.rand(real.size(0))
+        while epsilon.dim() < real.dim():
+            epsilon = epsilon.unsqueeze(-1)
+        epsilon = epsilon.to(real.device)
     return get_gradient_penalty_from_gradient(
         get_gradient(disc=disc, real=real, fake=fake, epsilon=epsilon)
     )
