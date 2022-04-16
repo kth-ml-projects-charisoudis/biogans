@@ -180,7 +180,7 @@ class DCGanDiscriminatorInd6Class(nn.Module, BalancedFreezable, Verbosable):
         while gradient_penalties.dim() < scores_r.dim():
             gradient_penalties = gradient_penalties.unsqueeze(-1)
 
-        mean_dim = 0 if scores_r.dim() == 4 else 1
+        mean_dim = 1
         scores_r = scores_r.mean(mean_dim)
         scores_f = scores_f.mean(mean_dim)
         return torch.stack([
@@ -192,7 +192,7 @@ class DCGanDiscriminatorInd6Class(nn.Module, BalancedFreezable, Verbosable):
     def get_loss(self, x: Tensor, is_real: bool) -> Tensor:
         assert type(self.adv_criterion) == pytorch.WassersteinLoss
         scores_r = self(x)
-        return scores_r.mean() if is_real else -scores_r.mean()
+        return scores_r.mean(dim=1) if is_real else -scores_r.mean(dim=1)
 
     def get_layer_attr_names(self) -> List[str]:
         return [f'dcgan_disc_{i}' for i in range(6)]
