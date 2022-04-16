@@ -608,8 +608,8 @@ class BioGanInd6Class(nn.Module, IGanGModule):
                     self.gen_opt_lr_scheduler.step()
 
         # Save for visualization
-        self.g_out = g_out[:, ::len(g_out) - 1].detach().cpu()
-        self.x = x[:, ::len(x) - 1].detach().cpu()
+        self.g_out = g_out[:, ::g_out.shape[1] - 1].detach().cpu()
+        self.x = x[:, ::g_out.shape[1] - 1].detach().cpu()
         self.gen_losses.append(gen_loss.item())
         self.disc_losses.append(disc_loss.item())
 
@@ -708,6 +708,7 @@ if __name__ == '__main__':
 
     # Test visualization
     _x = next(iter(dataloader))
+    print(_x.shape)
     _disc_loss, _gen_loss = biogan(_x)
     print('disc_loss', _disc_loss, 'gen_loss', _gen_loss)
     biogan.visualize()

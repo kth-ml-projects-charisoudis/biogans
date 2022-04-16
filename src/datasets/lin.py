@@ -916,6 +916,8 @@ if __name__ == '__main__':
     print(batch.shape)
     plt.imshow(batch[:, 1, 0, :, :].reshape(48 * 6, 80), cmap="Reds")
     plt.show()
+    plt.imshow(batch[:, 1, 1, :, :].reshape(48 * 6, 80), cmap="Greens")
+    plt.show()
     # lin6ds = LINDataset6Class(dataset_fs_folder_or_root=_groot, train_not_test=True)
     # print(lin6ds[0].shape)
     # plt.imshow(lin6ds[4000][:, 0, :, :].reshape(48 * 6, 80), cmap="Reds")
