@@ -192,7 +192,7 @@ class DCGanDiscriminatorInd6Class(nn.Module, BalancedFreezable, Verbosable):
     def get_loss(self, x: Tensor, is_real: bool) -> Tensor:
         assert type(self.adv_criterion) == pytorch.WassersteinLoss
         scores_r = self(x)
-        return scores_r.mean(dim=1) if is_real else -scores_r.mean(dim=1)
+        return -scores_r.mean() if is_real else scores_r.mean()
 
     def get_layer_attr_names(self) -> List[str]:
         return [f'dcgan_disc_{i}' for i in range(6)]
