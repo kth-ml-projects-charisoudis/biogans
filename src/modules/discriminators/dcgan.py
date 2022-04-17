@@ -171,28 +171,79 @@ class DCGanDiscriminatorInd6Class(nn.Module, BalancedFreezable, Verbosable):
             out[class_idx] = self.disc[class_idx](x[class_idx])
         return torch.stack(out, dim=0)
 
-    # noinspection DuplicatedCode
-    def get_loss_both(self, real: Tensor, fake: Tensor) -> Tensor:
-        assert type(self.adv_criterion) == pytorch.WassersteinLoss
-        scores_r = self(real)
-        scores_f = self(fake)
-        gradient_penalties = get_gradient_penalty(disc=self, real=real.data, fake=fake.data)
-        while gradient_penalties.dim() < scores_r.dim():
-            gradient_penalties = gradient_penalties.unsqueeze(-1)
+    # # noinspection DuplicatedCode
+    # def get_loss_both(self, real: Tensor, fake: Tensor) -> Tensor:
+    #     assert type(self.adv_criterion) == pytorch.WassersteinLoss
+    #     scores_r = self(real)
+    #     scores_f = self(fake)
+    #     gradient_penalties = get_gradient_penalty(disc=self, real=real.data, fake=fake.data)
+    #     while gradient_penalties.dim() < scores_r.dim():
+    #         gradient_penalties = gradient_penalties.unsqueeze(-1)
+    #
+    #     mean_dim = 1
+    #     scores_r = scores_r.mean(mean_dim)
+    #     scores_f = scores_f.mean(mean_dim)
+    #     return torch.stack([
+    #         scores_r[class_idx] - scores_f[class_idx] + self.gp_lambda * gradient_penalties[class_idx]
+    #         for class_idx in range(6)
+    #     ], dim=0).mean()
+    #
+    # # noinspection DuplicatedCode
+    # def get_loss(self, x: Tensor, is_real: bool) -> Tensor:
+    #     assert type(self.adv_criterion) == pytorch.WassersteinLoss
+    #     scores_r = self(x)
+    #     return scores_r.mean() if is_real else scores_r.mean()
 
-        mean_dim = 1
-        scores_r = scores_r.mean(mean_dim)
-        scores_f = scores_f.mean(mean_dim)
-        return torch.stack([
-            scores_r[class_idx] - scores_f[class_idx] + self.gp_lambda * gradient_penalties[class_idx]
-            for class_idx in range(6)
-        ], dim=0).mean()
+    # noinspection DuplicatedCode
+    def get_loss_both(self, real: Tensor, fake: Tensor, criterion: Optional[nn.modules.Module] = None) -> Tensor:
+        """
+        Compute adversarial loss using both real and fake images.
+        :param (torch.Tensor) real: image tensor of shape (N, C, H, W) from real dataset
+        :param (torch.Tensor) fake: image tensor of shape (N, C, H, W) produced by generator (i.e. fake images)
+        :param (optional) criterion: loss function (such as nn.BCELoss, nn.MSELoss and others)
+        :return: torch.Tensor containing loss value(s)
+        """
+        # scores_a = self(real)
+        # scores_b = self(fake)
+        # gradient_penalties = get_gradient_penalty(self, real.data, fake.data)
+        # mean_dim = 0 if scores_a.dim() in [1, 4] else 1
+        # gradient_penalty = gradient_penalties.mean(mean_dim)
+        # return scores_a.mean(mean_dim) - scores_b.mean(mean_dim) + self.gp_lambda * gradient_penalty
+
+        loss_on_real = self.get_loss(real, is_real=True, criterion=criterion)
+        loss_on_fake = self.get_loss(fake, is_real=False, criterion=criterion)
+        total_loss = loss_on_real + loss_on_fake
+        if self.gp_lambda is None:
+            return total_loss
+        # Calculate gradient penalty and append to loss
+        gradient_penalty = get_gradient_penalty(disc=self, real=real, fake=fake).mean()
+        return total_loss + self.gp_lambda * gradient_penalty
 
     # noinspection DuplicatedCode
-    def get_loss(self, x: Tensor, is_real: bool) -> Tensor:
-        assert type(self.adv_criterion) == pytorch.WassersteinLoss
-        scores_r = self(x)
-        return scores_r.mean() if is_real else scores_r.mean()
+    def get_loss(self, x: Tensor, is_real: bool, criterion: Optional[nn.modules.Module] = None) -> Tensor:
+        """
+        Compute adversarial loss using both real and fake images.
+        :param (torch.Tensor) x: image tensor of shape (N, C, H, W) from either dataset
+        :param (bool) is_real: set to True to compare predictions with 1s, else with 0s
+        :param (optional) criterion: loss function (such as nn.BCELoss, nn.MSELoss and others)
+        :return: torch.Tensor containing loss value(s)
+        """
+        # Setup criterion
+        criterion = self.adv_criterion if criterion is None else criterion
+        assert criterion is not None
+        # Proceed with loss calculation
+        predictions = self(x)
+        # print('DISC OUTPUT SHAPE: ' + str(predictions.shape))
+        if type(criterion) == nn.modules.loss.BCELoss:
+            predictions = nn.Sigmoid()(predictions)
+        if type(criterion) == pytorch.WassersteinLoss:
+            reference = -1.0 * torch.ones_like(predictions) if is_real else 1.0 * torch.ones_like(predictions)
+        else:
+            reference = torch.ones_like(predictions) if is_real else torch.zeros_like(predictions)
+        return criterion(predictions, reference)
+        # scores = self(x)
+        # mean_dim = 0 if scores.dim() in [1, 4] else 1
+        # return scores.mean(mean_dim) if is_real else -scores.mean(mean_dim)
 
     def get_layer_attr_names(self) -> List[str]:
         return [f'dcgan_disc_{i}' for i in range(6)]
