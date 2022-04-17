@@ -3,7 +3,6 @@ import pathlib
 from typing import Optional, Sequence, Tuple, Union
 
 import click
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import wget
@@ -16,7 +15,7 @@ from modules.discriminators.dcgan import DCGanDiscriminator, DCGanDiscriminatorI
 from modules.generators.dcgan import DCGanGenerator, DCGanGeneratorInd6Class
 from modules.ifaces import IGanGModule
 from utils.ifaces import FilesystemFolder
-from utils.metrics import GanEvaluator
+from utils.metrics import GanEvaluator, GanEvaluator6Class
 from utils.plot import create_img_grid, plot_grid, create_img_grid_6class
 from utils.pytorch import invert_transforms, ToTensorOrPass
 from utils.train import get_optimizer, set_optimizer_lr, weights_init_naive
@@ -683,8 +682,8 @@ if __name__ == '__main__':
     ###    Models Initialization    ###
     ###################################
     #   - initialize evaluator instance (used to run GAN evaluation metrics: FID, IS, PRECISION, RECALL, F1 and SSIM)
-    evaluator = GanEvaluator(model_fs_folder_or_root=_models_groot, gen_dataset=dataset, z_dim=100,
-                             device=exec_device, n_samples=2, batch_size=2, f1_k=2)
+    evaluator = GanEvaluator6Class(model_fs_folder_or_root=_models_groot, gen_dataset=dataset, z_dim=-1,
+                                   device=exec_device, n_samples=2, batch_size=2, f1_k=2)
     #   - initialize model
     _chkpt_step = f'aosokin:{PROJECT_DIR_PATH}/aosokin_checkpoints/auto'
     # chkpt_step = None
@@ -704,10 +703,13 @@ if __name__ == '__main__':
     biogan.logger.debug(f'Using device: {str(exec_device)}')
     biogan.logger.debug(f'Model initialized. Number of params = {biogan.nparams_hr}')
 
-    # Test visualization
-    _x = next(iter(dataloader))
-    print(_x.shape)
-    _disc_loss, _gen_loss = biogan(_x)
-    print('disc_loss', _disc_loss, 'gen_loss', _gen_loss)
-    biogan.visualize()
-    plt.show()
+    # # Test visualization
+    # _x = next(iter(dataloader))
+    # print(_x.shape)
+    # _disc_loss, _gen_loss = biogan(_x)
+    # print('disc_loss', _disc_loss, 'gen_loss', _gen_loss)
+    # biogan.visualize()
+    # biogan.gcapture(metrics=False, visualizations=False, in_parallel=False, show_progress=True)
+    # plt.show()
+
+    print(biogan.evaluate('all'))

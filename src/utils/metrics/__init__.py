@@ -71,14 +71,15 @@ class GanEvaluator(object):
         self.z_dim = z_dim
         self.f1_k = f1_k
 
-    def evaluate(self, gen: nn.Module, metric_name: Optional[str] = None, show_progress: bool = True) \
-            -> Dict[str, float]:
+    def evaluate(self, gen: nn.Module, metric_name: Optional[str] = None, show_progress: bool = True,
+                 dataset=None) -> Dict[str, float]:
         """
         Evaluate the generator's current state and return a `dict` with metric names as keys and evaluation results as
         values.
         :param (nn.Module) gen: the generator network as a `torch.nn.Module` object
         :param (optional) metric_name: the name of the evaluation metric to be applied
         :param (bool) show_progress: set to True to have the progress of evaluation metrics displayed (using `tqdm` lib)
+        :param (optional) dataset: override `self.dataset` for this evaluation
         :return: if :attr:`metric` is `None` then a `dict` of all available metrics is returned, only the given metric
                  is returned otherwise
         """
@@ -88,10 +89,12 @@ class GanEvaluator(object):
         # Set generator in evaluation mode
         gen = gen.eval()
         metrics_dict = {}
+        if dataset is None:
+            dataset = self.dataset
         with torch.no_grad():
             for metric_name in (self.calculators.keys() if not metric_name or 'all' == metric_name else (metric_name,)):
                 # Evaluate model
-                metric = self.calculators[metric_name](self.dataset, gen=gen, target_index=self.target_index,
+                metric = self.calculators[metric_name](dataset, gen=gen, target_index=self.target_index,
                                                        condition_indices=self.condition_indices, z_dim=self.z_dim,
                                                        skip_asserts=True, show_progress=show_progress, k=self.f1_k,
                                                        use_fid_embeddings=True)
@@ -103,3 +106,20 @@ class GanEvaluator(object):
                     metrics_dict[metric_name] = metric.item()
         # Return metrics dict
         return metrics_dict
+
+
+class GanEvaluator6Class(GanEvaluator):
+    def __init__(self, *args, **kwargs):
+        GanEvaluator.__init__(self, *args, **kwargs)
+
+    def evaluate(self, gen: nn.Module, metric_name: Optional[str] = None, show_progress: bool = True,
+                 dataset=None) -> Dict[str, float]:
+        assert hasattr(gen, 'gens') and hasattr(self.dataset, 'datasets')
+        dict_list = [
+            super(GanEvaluator6Class, self).evaluate(gen_c, metric_name, show_progress, dataset_c)
+            for gen_c, dataset_c in zip(gen.gens, self.dataset.datasets.values())
+        ]
+        return {
+            k: sum(d[k] for d in dict_list) / len(dict_list)
+            for k in dict_list[0].keys()
+        }
