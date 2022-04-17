@@ -434,21 +434,21 @@ class BioGanInd6Class(nn.Module, IGanGModule):
         #   - generators
         gen_conf = self._configuration['gen']
         gen_conf['c_out'] = 2
-        self.gen = DCGanGeneratorInd6Class(**gen_conf)
+        gen = DCGanGeneratorInd6Class(**gen_conf)
         #   - discriminators
         disc_conf = self._configuration['disc']
         disc_conf['c_in'] = 2
-        self.disc = DCGanDiscriminatorInd6Class(**disc_conf)
+        disc = DCGanDiscriminatorInd6Class(**disc_conf)
+
+        # Move models to {C,G,T}PU
+        self.gen = gen.to(device)
+        self.disc = disc.to(device)
 
         # Define optimizers
         gen_opt_conf = self._configuration['gen_opt']
         self.gen_opt, _ = get_optimizer(self.gen, **gen_opt_conf)
         disc_opt_conf = self._configuration['disc_opt']
         self.disc_opt, _ = get_optimizer(self.disc, **disc_opt_conf)
-
-        # Move models to {C,G,T}PU
-        self.gen.to(device)
-        self.disc.to(device)
 
         # Load checkpoint from Google Drive
         self.other_state_dicts = {}
@@ -575,37 +575,35 @@ class BioGanInd6Class(nn.Module, IGanGModule):
         ##########################################
         ########   Update Discriminator   ########
         ##########################################
-        with self.gen.frozen():
-            for _ in range(self.n_disc_iters):
-                self.disc_opt.zero_grad()  # Zero out discriminator gradient (before backprop)
-                z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
-                g_out = self.gen(z)
-                disc_loss = self.disc.get_loss_both(real=x.clone(), fake=g_out.detach())
-                disc_loss.backward()  # Update discriminator gradients
-                self.disc_opt.step()  # Update discriminator weights
-                # Update LR (if needed)
-                if self.disc_opt_lr_scheduler:
-                    if isinstance(self.disc_opt_lr_scheduler, ReduceLROnPlateau):
-                        self.disc_opt_lr_scheduler.step(metrics=disc_loss)
-                    else:
-                        self.disc_opt_lr_scheduler.step()
+        for _ in range(self.n_disc_iters):
+            self.disc_opt.zero_grad()  # Zero out discriminator gradient (before backprop)
+            z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
+            g_out = self.gen(z)
+            disc_loss = self.disc.get_loss_both(real=x.clone(), fake=g_out.detach())
+            disc_loss.backward()  # Update discriminator gradients
+            self.disc_opt.step()  # Update discriminator weights
+            # Update LR (if needed)
+            if self.disc_opt_lr_scheduler:
+                if isinstance(self.disc_opt_lr_scheduler, ReduceLROnPlateau):
+                    self.disc_opt_lr_scheduler.step(metrics=disc_loss)
+                else:
+                    self.disc_opt_lr_scheduler.step()
 
         ##########################################
         ########     Update Generator     ########
         ##########################################
-        with self.disc.frozen():
-            self.gen_opt.zero_grad()
-            z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
-            g_out = self.gen(z)
-            gen_loss = self.disc.get_loss(x=g_out, is_real=True)
-            gen_loss.backward()  # Update generator gradients
-            self.gen_opt.step()  # Update generator weights
-            # Update LR (if needed)
-            if self.gen_opt_lr_scheduler:
-                if isinstance(self.gen_opt_lr_scheduler, ReduceLROnPlateau):
-                    self.gen_opt_lr_scheduler.step(metrics=gen_loss)
-                else:
-                    self.gen_opt_lr_scheduler.step()
+        self.gen_opt.zero_grad()
+        z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
+        g_out = self.gen(z)
+        gen_loss = self.disc.get_loss(x=g_out, is_real=True)
+        gen_loss.backward()  # Update generator gradients
+        self.gen_opt.step()  # Update generator weights
+        # Update LR (if needed)
+        if self.gen_opt_lr_scheduler:
+            if isinstance(self.gen_opt_lr_scheduler, ReduceLROnPlateau):
+                self.gen_opt_lr_scheduler.step(metrics=gen_loss)
+            else:
+                self.gen_opt_lr_scheduler.step()
 
         # Save for visualization
         self.g_out = g_out[:, ::g_out.shape[1] - 1].detach().cpu()
