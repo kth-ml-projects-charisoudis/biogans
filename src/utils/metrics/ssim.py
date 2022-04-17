@@ -144,10 +144,7 @@ class SSIM(nn.Module):
 
                 # Get target (real) images
                 target_output = real_samples[target_index] if target_index is not None else real_samples
-                target_output = torch.concat(
-                    (target_output, torch.zeros(target_output.shape[0], 1, 48, 80).to(self.device)),
-                    dim=1
-                )
+                target_output = target_output.to(self.device)
                 # if not skip_asserts:
                 #     assert target_output.min() < 0, f'target_output.min() < 0: FAILED, min={target_output.min()}'
                 #     assert target_output.min() >= -1, f'target_output.min() >= -1: FAILED, min={target_output.min()}'
@@ -162,10 +159,6 @@ class SSIM(nn.Module):
                 # gen_inputs = [gen_transforms(gen_input).to(self.device) for gen_input in gen_inputs] \
                 #     if condition_indices is not None else gen_inputs.to(self.device)
                 fake_output = gen(*gen_inputs)
-                fake_output = torch.concat(
-                    (fake_output, torch.zeros(fake_output.shape[0], 1, 48, 80).to(self.device)),
-                    dim=1
-                )
                 fake_output_type = type(fake_output)
                 if fake_output_type != torch.Tensor and (type(fake_output) == tuple or type(fake_output) == list):
                     fake_output = fake_output[-1]

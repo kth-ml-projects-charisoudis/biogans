@@ -683,7 +683,7 @@ if __name__ == '__main__':
     ###################################
     #   - initialize evaluator instance (used to run GAN evaluation metrics: FID, IS, PRECISION, RECALL, F1 and SSIM)
     evaluator = GanEvaluator6Class(model_fs_folder_or_root=_models_groot, gen_dataset=dataset, z_dim=-1,
-                                   device=exec_device, n_samples=2, batch_size=2, f1_k=2)
+                                   device=exec_device, n_samples=2, batch_size=2, f1_k=2, ssim_c_img=2)
     #   - initialize model
     _chkpt_step = f'aosokin:{PROJECT_DIR_PATH}/aosokin_checkpoints/auto'
     # chkpt_step = None
