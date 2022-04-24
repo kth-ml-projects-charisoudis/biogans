@@ -115,7 +115,7 @@ class LINDataset(Dataset, GDriveDataset):
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.RandomVerticalFlip(p=0.5),
                 transforms.ToTensor(),
-                transforms.Normalize([0.5, ] * 3, [0.5, ] * 3)
+                transforms.Normalize(0.5, 0.5)
             ])
         else:
             self._transforms = t
