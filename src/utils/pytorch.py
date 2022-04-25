@@ -10,7 +10,7 @@ import scipy.optimize
 import torch
 import torch.nn as nn
 from PIL import Image
-from torch.autograd import Function
+from torch.autograd import Function, Variable
 from torch.nn import Module
 from torchvision.transforms import transforms
 
@@ -87,7 +87,7 @@ def get_gradient(disc: nn.Module, real: torch.Tensor, fake: torch.Tensor, epsilo
     :param (nn.Module) disc: the critic model
     :param (torch.Tensor) real: a batch of real images
     :param (torch.Tensor) fake: a batch of fake images
-    :param (torch.Tensor) epsilon: a vector of the uniformly random proportions of real/fake per mixed image
+    :param (torch.Tensor) epsilon:
     :return: (torch.Tensor) the gradient of the critic's scores, with respect to the mixed image
     """
     # Mix the images together
@@ -136,6 +136,63 @@ def get_gradient_penalty_from_gradient(gradient: torch.Tensor) -> torch.Tensor:
     return torch.mean(gradient_penalties, dim=0)
 
 
+def get_gradient_penalties(disc: nn.Module, real: torch.Tensor, fake: torch.Tensor) -> torch.Tensor:
+    """
+    Return the gradient of the critic's scores w.r.t. mixes of real and fake images.
+    Attention: Returns the gradient of c(x) w.r.t. to x. If for example x is a (3,128,128) image, then grad_x(c(x)) will
+               be a (3,128,128) tensor containing how much the c(x) changes if x[i][j][k] changes.
+    :param (nn.Module) disc: the critic model
+    :param (torch.Tensor) real: a batch of real images
+    :param (torch.Tensor) fake: a batch of fake images
+    :return: (torch.Tensor) the gradient of the critic's scores, with respect to the mixed image
+    """
+    # equalize batch sizes
+    if real.dim() == 4:
+        batch_size = min(real.size(0), real.size(0))
+        real = real[:batch_size]
+        fake = fake[:batch_size]
+        # get noisy inputs
+        eps = torch.rand(batch_size)
+        while eps.dim() < real.dim():
+            eps = eps.unsqueeze(-1)
+    elif real.dim() == 5:
+        assert (real.size(0) == fake.size(0))
+        batch_size = min(real.size(1), fake.size(1))
+        real = real[:, :batch_size, :, :, :]
+        fake = fake[:, :batch_size, :, :, :]
+        # get noisy inputs
+        eps = torch.rand(real.size(0), batch_size)
+        while eps.dim() < real.dim():
+            eps = eps.unsqueeze(-1)
+    else:
+        raise RuntimeError("Unknown dimension of image data: {0}".format(real.dim()))
+
+    eps = eps.cuda() if real.is_cuda else eps
+    mixed_images = eps * real + (1 - eps) * fake
+    mixed_images = Variable(mixed_images, requires_grad=True)
+
+    # push through network
+    mixed_scores = disc(mixed_images)
+
+    # compute the gradients
+    grads = torch.ones(mixed_scores.size())
+    grads = grads.cuda() if real.is_cuda else grads
+    gradients = torch.autograd.grad(outputs=mixed_scores, inputs=mixed_images, grad_outputs=grads, create_graph=True,
+                                    only_inputs=True)
+    if real.dim() == 4:
+        gradient_input = gradients[0].view(batch_size, -1)
+    else:
+        gradient_input = gradients[0].view(real.size(0) * batch_size, -1)
+
+    # compute the penalties
+    gradient_penalties = (gradient_input.norm(2, dim=1) - 1) ** 2
+
+    if real is not None and real.dim() != 4:
+        gradient_penalties = gradient_penalties.view(real.size(0), batch_size)
+
+    return gradient_penalties
+
+
 def get_gradient_penalty(disc: nn.Module, real: torch.Tensor, fake: torch.Tensor,
                          epsilon: Optional[torch.Tensor] = None) -> torch.Tensor:
     """
@@ -147,15 +204,18 @@ def get_gradient_penalty(disc: nn.Module, real: torch.Tensor, fake: torch.Tensor
     :param (torch.Tensor) epsilon: a vector of the uniformly random proportions of real/fake per mixed image
     :return: (torch.Tensor) the gradient of the critic's scores, with respect to the mixed image
     """
-    if epsilon is None:
-        # if no epsilon param provided, use a random mixing weight for each pair of real/fake images in current batch
-        epsilon = torch.rand(real.size(0), real.size(1)) if real.dim() == 5 else torch.rand(real.size(0))
-        while epsilon.dim() < real.dim():
-            epsilon = epsilon.unsqueeze(-1)
-        epsilon = epsilon.to(real.device)
-    return get_gradient_penalty_from_gradient(
-        get_gradient(disc=disc, real=real, fake=fake, epsilon=epsilon)
-    )
+    # if epsilon is None:
+    #     # if no epsilon param provided, use a random mixing weight for each pair of real/fake images in current batch
+    #     epsilon = torch.rand(real.size(0), real.size(1)) if real.dim() == 5 else torch.rand(real.size(0))
+    #     while epsilon.dim() < real.dim():
+    #         epsilon = epsilon.unsqueeze(-1)
+    #     epsilon = epsilon.to(real.device)
+    # return get_gradient_penalty_from_gradient(
+    #     get_gradient(disc=disc, real=real, fake=fake, epsilon=epsilon)
+    # )
+    gradient_penalties = get_gradient_penalties(disc, real, fake)
+    mean_dim = 0 if real.dim() == 1 else 1
+    return gradient_penalties.mean(mean_dim)
 
 
 class WassersteinLoss(nn.modules.Module):
@@ -163,8 +223,9 @@ class WassersteinLoss(nn.modules.Module):
         super().__init__()
 
     # noinspection PyMethodMayBeStatic
-    def forward(self, predictions: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
-        return weights.view(-1)[0] * torch.mean(predictions)
+    def forward(self, predictions: torch.Tensor, weights: torch.Tensor or float) -> torch.Tensor:
+        mean_dim = 0 if predictions.dim() == 1 else 1
+        return torch.mean(weights * predictions, dim=mean_dim)
 
 
 def get_total_params(model: Module, print_table: bool = False, sort_desc: bool = False) -> int or None:
