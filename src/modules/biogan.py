@@ -137,10 +137,6 @@ class BioGanInd1class(nn.Module, IGanGModule):
         disc_opt_conf = self._configuration['disc_opt']
         self.disc_opt, _ = get_optimizer(self.disc, **disc_opt_conf)
 
-        # Move models to {C,G,T}PU
-        self.gen.to(device)
-        self.disc.to(device)
-
         # Load checkpoint from Google Drive
         self.other_state_dicts = {}
         if chkpt_step is not None and chkpt_step.startswith('aosokin') or \
@@ -180,6 +176,10 @@ class BioGanInd1class(nn.Module, IGanGModule):
             # Initialize weights with small values
             self.gen = self.gen.apply(weights_init_naive)
             self.disc = self.disc.apply(weights_init_naive)
+
+        # Move models to {C,G,T}PU
+        self.gen.to(device)
+        self.disc.to(device)
 
         # # Define LR schedulers (after optimizer checkpoints have been loaded)
         # if gen_opt_conf['scheduler_type']:
