@@ -505,6 +505,7 @@ class BioGanInd6Class(nn.Module, IGanGModule):
         self.x = None
         self.device = device
         self.n_disc_iters = self._configuration.get('n_disc_iters', 1)
+        self.n_disc_iters_i = 0
 
     def load_configuration(self, configuration: dict) -> None:
         IGanGModule.load_configuration(self, configuration)
@@ -576,42 +577,47 @@ class BioGanInd6Class(nn.Module, IGanGModule):
         ##########################################
         ########   Update Discriminator   ########
         ##########################################
-        for _ in range(self.n_disc_iters):
-            self.disc_opt.zero_grad()  # Zero out discriminator gradient (before backprop)
-            z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
-            g_out = self.gen(z)
-            disc_loss = self.disc.get_loss_both(real=x.clone(), fake=g_out.detach()).mean()
-            disc_loss.backward()  # Update discriminator gradients
-            self.disc_opt.step()  # Update discriminator weights
-            # Update LR (if needed)
-            if self.disc_opt_lr_scheduler:
-                if isinstance(self.disc_opt_lr_scheduler, ReduceLROnPlateau):
-                    self.disc_opt_lr_scheduler.step(metrics=disc_loss)
-                else:
-                    self.disc_opt_lr_scheduler.step()
-
-        ##########################################
-        ########     Update Generator     ########
-        ##########################################
-        self.gen_opt.zero_grad()
+        self.disc_opt.zero_grad()  # Zero out discriminator gradient (before backprop)
         z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
         g_out = self.gen(z)
-        gen_loss = self.disc.get_loss(x=g_out, is_real=True).mean()
-        gen_loss.backward()  # Update generator gradients
-        self.gen_opt.step()  # Update generator weights
+        disc_loss = self.disc.get_loss_both(real=x.clone(), fake=g_out.detach()).mean()
+        disc_loss.backward()  # Update discriminator gradients
+        self.disc_opt.step()  # Update discriminator weights
         # Update LR (if needed)
-        if self.gen_opt_lr_scheduler:
-            if isinstance(self.gen_opt_lr_scheduler, ReduceLROnPlateau):
-                self.gen_opt_lr_scheduler.step(metrics=gen_loss)
+        if self.disc_opt_lr_scheduler:
+            if isinstance(self.disc_opt_lr_scheduler, ReduceLROnPlateau):
+                self.disc_opt_lr_scheduler.step(metrics=disc_loss)
             else:
-                self.gen_opt_lr_scheduler.step()
+                self.disc_opt_lr_scheduler.step()
 
-        # Save for visualization
-        self.g_out = g_out[:, ::g_out.shape[1] - 1].detach().cpu()
-        self.x = x[:, ::g_out.shape[1] - 1].detach().cpu()
-        self.gen_losses.append(gen_loss.item())
-        self.disc_losses.append(disc_loss.item())
+        self.n_disc_iters_i += 1
+        if self.n_disc_iters_i == self.n_disc_iters:
+            self.n_disc_iters_i = 0
 
+            ##########################################
+            ########     Update Generator     ########
+            ##########################################
+            with self.disc.frozen():
+                self.gen_opt.zero_grad()
+                z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
+                g_out = self.gen(z)
+                gen_loss = self.disc.get_loss(x=g_out, is_real=True).mean()
+                gen_loss.backward()  # Update generator gradients
+                self.gen_opt.step()  # Update generator weights
+                # Update LR (if needed)
+                if self.gen_opt_lr_scheduler:
+                    if isinstance(self.gen_opt_lr_scheduler, ReduceLROnPlateau):
+                        self.gen_opt_lr_scheduler.step(metrics=gen_loss)
+                    else:
+                        self.gen_opt_lr_scheduler.step()
+
+            # Save for visualization
+            self.g_out = g_out[:, ::g_out.shape[1] - 1].detach().cpu()
+            self.x = x[:, ::g_out.shape[1] - 1].detach().cpu()
+            self.gen_losses.append(gen_loss.item())
+            self.disc_losses.append(disc_loss.item())
+        else:
+            gen_loss = None
         return disc_loss, gen_loss
 
     #
