@@ -580,7 +580,7 @@ class BioGanInd6Class(nn.Module, IGanGModule):
             self.disc_opt.zero_grad()  # Zero out discriminator gradient (before backprop)
             z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
             g_out = self.gen(z)
-            disc_loss = self.disc.get_loss_both(real=x.clone(), fake=g_out.detach())
+            disc_loss = self.disc.get_loss_both(real=x.clone(), fake=g_out.detach()).mean()
             disc_loss.backward()  # Update discriminator gradients
             self.disc_opt.step()  # Update discriminator weights
             # Update LR (if needed)
@@ -596,7 +596,7 @@ class BioGanInd6Class(nn.Module, IGanGModule):
         self.gen_opt.zero_grad()
         z = self.gen.get_random_z(batch_size=batch_size, device=x.device)
         g_out = self.gen(z)
-        gen_loss = self.disc.get_loss(x=g_out, is_real=True)
+        gen_loss = self.disc.get_loss(x=g_out, is_real=True).mean()
         gen_loss.backward()  # Update generator gradients
         self.gen_opt.step()  # Update generator weights
         # Update LR (if needed)
@@ -705,13 +705,13 @@ if __name__ == '__main__':
     biogan.logger.debug(f'Using device: {str(exec_device)}')
     biogan.logger.debug(f'Model initialized. Number of params = {biogan.nparams_hr}')
 
-    # # Test visualization
-    # _x = next(iter(dataloader))
-    # print(_x.shape)
-    # _disc_loss, _gen_loss = biogan(_x)
-    # print('disc_loss', _disc_loss, 'gen_loss', _gen_loss)
+    # Test visualization
+    _x = next(iter(dataloader))
+    print(_x.shape)
+    _disc_loss, _gen_loss = biogan(_x)
+    print('disc_loss', _disc_loss, 'gen_loss', _gen_loss)
     # biogan.visualize()
     # biogan.gcapture(metrics=False, visualizations=False, in_parallel=False, show_progress=True)
     # plt.show()
 
-    print(biogan.evaluate('all'))
+    # print(biogan.evaluate('all'))
