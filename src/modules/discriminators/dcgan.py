@@ -247,7 +247,7 @@ class DCGanDiscriminatorInd6Class(nn.Module, BalancedFreezable, Verbosable):
         if type(criterion) == nn.modules.loss.BCELoss:
             predictions = nn.Sigmoid()(predictions)
         if type(criterion) == pytorch.WassersteinLoss:
-            reference = -1.0 if is_real else 1.0
+            reference = 1.0 if is_real else -1.0
         else:
             reference = torch.ones_like(predictions) if is_real else torch.zeros_like(predictions)
         return criterion(predictions, reference)
