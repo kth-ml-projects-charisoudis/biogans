@@ -213,10 +213,10 @@ class DCGanDiscriminatorInd6Class(nn.Module, BalancedFreezable, Verbosable):
         if type(criterion) == pytorch.WassersteinLoss:
             scores_real = self(real)
             scores_fake = self(fake)
-            gradient_penalties = get_gradient_penalties(self, real, fake)
+            gradient_penalties = get_gradient_penalties(self, real.data, fake.data)
             mean_dim = 0 if scores_real.dim() == 1 else 1
             gradient_penalty = gradient_penalties.mean(mean_dim)
-            return -(scores_real.mean(mean_dim) - scores_fake.mean(mean_dim)) + self.gp_lambda * gradient_penalty
+            return scores_real.mean(mean_dim) - scores_fake.mean(mean_dim) + self.gp_lambda * gradient_penalty
 
         loss_on_real = self.get_loss(real, is_real=True, criterion=criterion)
         loss_on_fake = self.get_loss(fake, is_real=False, criterion=criterion)
@@ -224,7 +224,7 @@ class DCGanDiscriminatorInd6Class(nn.Module, BalancedFreezable, Verbosable):
         if self.gp_lambda is None:
             return total_loss
         # Calculate gradient penalty and append to loss
-        gradient_penalties = get_gradient_penalties(self, real, fake)
+        gradient_penalties = get_gradient_penalties(self, real.data, fake.data)
         mean_dim = 0 if real.dim() == 4 else 1
         gradient_penalty = gradient_penalties.mean(mean_dim)
         return total_loss + self.gp_lambda * gradient_penalty
@@ -250,7 +250,7 @@ class DCGanDiscriminatorInd6Class(nn.Module, BalancedFreezable, Verbosable):
             reference = -1.0 if is_real else 1.0
         else:
             reference = torch.ones_like(predictions) if is_real else torch.zeros_like(predictions)
-        return criterion(predictions, reference)
+        return criterion(predictions, 1.0 if is_real else -1.0)
         # scores = self(x)
         # mean_dim = 0 if scores.dim() in [1, 4] else 1
         # return scores.mean(mean_dim) if is_real else -scores.mean(mean_dim)

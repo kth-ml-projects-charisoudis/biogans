@@ -224,8 +224,8 @@ class WassersteinLoss(nn.modules.Module):
 
     # noinspection PyMethodMayBeStatic
     def forward(self, predictions: torch.Tensor, weights: torch.Tensor or float) -> torch.Tensor:
-        mean_dim = 0 if predictions.dim() == 1 else 1
-        return torch.mean(weights * predictions, dim=mean_dim)
+        # mean_dim = 0 if predictions.dim() == 1 else 1
+        return (weights * predictions).mean()
 
 
 def get_total_params(model: Module, print_table: bool = False, sort_desc: bool = False) -> int or None:
