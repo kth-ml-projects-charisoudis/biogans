@@ -452,15 +452,14 @@ class LINNearestNeighborsScraper:
         # searched_classes = [k for k in LINDataset.Classes if k.startswith('A')]
         self.nn_dataloaders = {k: LINDataloader(dataset_gfolder, train_not_test=which_search == 'train',
                                                 logger=self.logger, which_classes=k, batch_size=self.nn_dl_bs,
-                                                return_path=True, pin_memory=True, num_workers=4)
+                                                return_path=True, pin_memory=True, num_workers=4,
+                                                image_transforms=ToNumpy())
                                for k in self.searched_classes}
         self.which_search = which_search
         self.dataset_gfolder: FilesystemFolder = dataset_gfolder
         self.dataset_lin_gfolder: FilesystemFolder = dataset_gfolder.subfolder_by_name('LIN_48x80')
-        self.dl_transforms = transforms.Compose([
-            ToNumpy(),
-            LinToTensorNormalized()
-        ])
+        self.to_np = ToNumpy()
+        self.norm = LinToTensorNormalized()
 
     @staticmethod
     def _compute_L2_dists(query_img: Tensor, nn_imgs: Tensor, channel_index: int = 0) -> Tensor:
@@ -748,7 +747,7 @@ class LINNearestNeighborsScraper:
             assert os.path.exists(nearest_neighbors_info_path), f'searched at: {nearest_neighbors_info_path}'
             nearest_neighbors_pth_path = os.path.join(query_dataset.root, f'nearest_neighbors.pth')
             if os.path.exists(nearest_neighbors_pth_path):
-                os.rename(nearest_neighbors_pth_path, f'{nearest_neighbors_pth_path}.bak')
+                os.rename(nearest_neighbors_pth_path, f'{nearest_neighbors_pth_path}.bak2')
             if os.path.exists(nearest_neighbors_pth_path):
                 _path = pathlib.Path(nearest_neighbors_pth_path)
                 self.logger.info(f'[generate][{query_dir}] File exists at ' +
@@ -770,12 +769,15 @@ class LINNearestNeighborsScraper:
                     pbar.set_description(query_img_path)
                     #   - init data holder for red + greens
                     nn_pkl_item = torch.zeros(1 + len(self.searched_classes), 48, 80)
-                    red_binary_mask = query_img[0, :, :] > 0
-                    self.dl_transforms.transforms[-1].mask = red_binary_mask.clone().numpy()
-                    nn_pkl_item[0, :, :] = query_img[0, :, :] * red_binary_mask
-                    nn_pkl_item[1 + query_class_idx, :, :] = query_img[1, :, :] * red_binary_mask
-                    #   - init data holder for reds
+                    #   - init data holder for reds only
                     nn_reds_pkl_item = torch.zeros(len(self.searched_classes), 48, 80)
+                    #   - compute cell mask from red
+                    red_binary_mask = query_img[0, :, :] > 0
+                    self.norm.mask = red_binary_mask.clone().numpy()
+                    #   - add image to nn and nn_reds
+                    query_img = self.norm(query_img.numpy())
+                    nn_pkl_item[0, :, :] = query_img[0, :, :].clone()
+                    nn_pkl_item[1 + query_class_idx, :, :] = query_img[1, :, :]
                     nn_reds_pkl_item[query_class_idx, :, :] = query_img[0, :, :]
                     #   - load nn info
                     nn_info_img = nn_info[query_img_path]
@@ -783,7 +785,8 @@ class LINNearestNeighborsScraper:
                     #   - load nn images
                     for nn_img_path_i, nn_img_path in enumerate(nn_img_paths):
                         nn_img_path_abs = os.path.join(dataset_root, nn_img_path)
-                        nn_img = self.dl_transforms(Image.open(nn_img_path_abs))
+                        nn_img = self.to_np(Image.open(nn_img_path_abs))
+                        nn_img = self.norm(nn_img)
                         #   - add red channel to reds
                         nn_class_idx = path2class_idx(nn_img_path)
                         assert torch.allclose(nn_reds_pkl_item[nn_class_idx],
@@ -794,7 +797,7 @@ class LINNearestNeighborsScraper:
                         assert torch.allclose(nn_pkl_item[1 + nn_class_idx],
                                               torch.zeros_like(nn_pkl_item[1 + nn_class_idx])), \
                             f'{query_class_idx} vs. {nn_class_idx}'
-                        nn_pkl_item[1 + nn_class_idx, :, :] = nn_img[1, :, :] * red_binary_mask
+                        nn_pkl_item[1 + nn_class_idx, :, :] = nn_img[1, :, :]
                     #   - check assignments
                     for _i in range(len(self.searched_classes)):
                         assert not torch.allclose(nn_reds_pkl_item[_i], torch.zeros_like(nn_reds_pkl_item[_i])), f'{_i}'
@@ -903,22 +906,23 @@ if __name__ == '__main__':
     # # _lin_alp14_test = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=False, which_classes='Alp14',
     # #                              logger=_lin_train.logger)
     # # # _lin.fetch_and_unzip()
-    # # _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Alp14')
-    # # plt.imshow(_lin_nn_alp14[0][1:].reshape(48 * 6, 80), cmap="Greens")
-    # # plt.show()
-    # # _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Alp14', reds_only=True)
-    # # plt.imshow(_lin_nn_alp14[0].reshape(48 * 6, 80), cmap="Reds")
-    # # plt.show()
+    _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Tea1')
+    sample = _lin_nn_alp14[0]
+    plt.imshow(sample[1:].reshape(48 * 6, 80), cmap="Greens")
+    plt.show()
+    # _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Alp14', reds_only=True)
+    # plt.imshow(sample.reshape(48 * 6, 80), cmap="Reds")
+    # plt.show()
     # print(_lin_alp14_train[0].shape)
 
-    lin6dl = LINDataloader6Class(_groot, train_not_test=True, batch_size=10)
-    batch = next(iter(lin6dl))
-    print(batch.shape)
-    plt.imshow(batch[:, 1, 0, :, :].reshape(48 * 6, 80), cmap="Reds")
-    plt.show()
-    plt.imshow(batch[:, 1, 1, :, :].reshape(48 * 6, 80), cmap="Greens")
-    plt.show()
-    # lin6ds = LINDataset6Class(dataset_fs_folder_or_root=_groot, train_not_test=True)
-    # print(lin6ds[0].shape)
-    # plt.imshow(lin6ds[4000][:, 0, :, :].reshape(48 * 6, 80), cmap="Reds")
+    # lin6dl = LINDataloader6Class(_groot, train_not_test=True, batch_size=10)
+    # batch = next(iter(lin6dl))
+    # print(batch.shape)
+    # plt.imshow(batch[:, 1, 0, :, :].reshape(48 * 6, 80), cmap="Reds")
     # plt.show()
+    # plt.imshow(batch[:, 1, 1, :, :].reshape(48 * 6, 80), cmap="Greens")
+    # plt.show()
+    # # lin6ds = LINDataset6Class(dataset_fs_folder_or_root=_groot, train_not_test=True)
+    # # print(lin6ds[0].shape)
+    # # plt.imshow(lin6ds[4000][:, 0, :, :].reshape(48 * 6, 80), cmap="Reds")
+    # # plt.show()

@@ -495,7 +495,7 @@ class LinToTensorNormalized:
         self.mask = None
 
     def __call__(self, img: np.ndarray) -> torch.Tensor:
-        if self.mask is not None:
+        if len(img.shape) == 3 and self.mask is not None:
             for c in range(1, img.shape[0]):  # skip red
                 img[c, :, :] *= self.mask
         img = torch.from_numpy(img.astype(np.float32)) / 255.0
