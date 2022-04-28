@@ -1,3 +1,4 @@
+import gc
 from collections import OrderedDict
 from typing import Optional, OrderedDict as OrderedDictT
 
@@ -6,7 +7,53 @@ from torch import nn
 
 from modules.partial.decoding import ExpandingBlock
 from utils.ifaces import BalancedFreezable
-from utils.pytorch import get_total_params
+
+
+class DCGanSubGenerator(BalancedFreezable):
+    GEN_FORWARDS = None
+
+    def __init__(self, gen: 'DCGanGenerator', rank: int = 0):
+        BalancedFreezable.__init__(self)
+        self.gen = gen
+        self.rank = rank
+        self.index = 0
+        self.z_dim = gen.z_dim
+
+    def peak(self) -> torch.Tensor:
+        out = self.GEN_FORWARDS[self.index][:, [0, self.rank + 1], :, :]
+        self.index += 1
+        # print(f'[SG{self.rank}][peak] out_shape={out.shape} | new_index={self.index}')
+        return out
+
+    def __call__(self, z: torch.Tensor):
+        if self.rank == 0:
+            if self.__class__.GEN_FORWARDS is None:
+                self.__class__.GEN_FORWARDS = [self.gen(z).detach(), ]
+            else:
+                self.__class__.GEN_FORWARDS.append(self.gen(z).detach())
+        return self.peak()
+
+    def reset(self):
+        if self.rank == 0:
+            del self.__class__.GEN_FORWARDS
+            self.__class__.GEN_FORWARDS = None
+            gc.collect()
+        self.index = 0
+        # print(f'[SG{self.rank}][reset] new_index=0')
+
+    def eval(self):
+        self.gen.eval()
+        return self
+
+    def train(self):
+        self.gen.train()
+        return self
+
+    def freeze(self, force: bool = False):
+        self.gen.freeze(force)
+
+    def unfreeze(self, force: bool = False):
+        self.gen.unfreeze(force)
 
 
 class DCGanGenerator(nn.Module, BalancedFreezable):
@@ -14,6 +61,7 @@ class DCGanGenerator(nn.Module, BalancedFreezable):
     DCGanGenerator Class:
     Implements the Deep Convolutional GAN generator architecture. Noise-to-Image unconditional generation.
     """
+    SUB_GENS = None
 
     def __init__(self, c_out: int = 2, z_dim: int = 100, norm_type: str = 'batch', c_hidden: int = 512,
                  n_extra_layers: int = 0, red_portion: Optional[float] = None):
@@ -71,6 +119,14 @@ class DCGanGenerator(nn.Module, BalancedFreezable):
         class_state_dict = OrderedDict({k_new: state_dict[k] for k, k_new in zip(sd_keys, self_keys)})
         self.load_state_dict(class_state_dict)
 
+    @property
+    def gens(self):
+        if self.__class__.SUB_GENS is None:
+            self.__class__.SUB_GENS = [DCGanSubGenerator(self, rank=i) for i in range(6)]
+        else:
+            [sub_gen.reset() for sub_gen in self.__class__.SUB_GENS]
+        return self.__class__.SUB_GENS
+
 
 class SeparableDCGanGenerator(DCGanGenerator):
     """
@@ -125,13 +181,13 @@ if __name__ == '__main__':
     # print(_gen(_z).shape)
     # get_total_params(_gen, True, True)
 
-    _gen = SeparableDCGanGenerator(c_out=2, n_extra_layers=0)
-    print(_gen)
-    _out = _gen(_gen.get_random_z(batch_size=1))
-    print(_out.shape)
-    x_red, x_green = torch.split(_out, [_gen.c_out_red, _gen.c_out_green], dim=1)
-    print(x_red.shape, x_green.shape)
-    get_total_params(_gen, True, True)
+    # _gen = SeparableDCGanGenerator(c_out=2, n_extra_layers=0)
+    # print(_gen)
+    # _out = _gen(_gen.get_random_z(batch_size=1))
+    # print(_out.shape)
+    # x_red, x_green = torch.split(_out, [_gen.c_out_red, _gen.c_out_green], dim=1)
+    # print(x_red.shape, x_green.shape)
+    # get_total_params(_gen, True, True)
 
     # with open('/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.gdrive_personal/Models/model_name' +
     #           '=BioGanInd1class_alp14/Configurations/wgan-gp-independent-sep.yaml') as fp:
@@ -139,3 +195,11 @@ if __name__ == '__main__':
     # _gen = DCGanGenerator(**config['gen'])
     # chkpt_path = '/aosokin_wgan_id_sep.pth'
     # _gen.load_aosokin_state_dict(state_dict=torch.load(chkpt_path, map_location='cpu'))
+
+    _gen = DCGanGenerator(c_out=7, z_dim=350, norm_type='batch', c_hidden=1792, n_extra_layers=0, red_portion=0.143)
+    print(_gen)
+    # _out = _gen(_gen.get_random_z(batch_size=1))
+    # print(_out.shape)
+    # x_red, x_green = torch.split(_out, [_gen.c_out_red, _gen.c_out_green], dim=1)
+    # print(x_red.shape, x_green.shape)
+    # get_total_params(_gen, True, True)

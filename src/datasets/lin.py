@@ -178,12 +178,24 @@ class LINDataset6Class(Dataset):
         return self.datasets['Alp14'].transforms
 
 
+class LINNearestSubset(Dataset):
+    def __init__(self, data):
+        self.data = data
+
+    def __getitem__(self, index):
+        return self.data[index]
+
+    def __len__(self):
+        return self.data.shape[0]
+
+
 class LINNearestDataset(LINDataset):
     """
     LINNearestDataset Class:
     Implements nearest-neighbors version of LIN dataset. Each "image" contains 1 red channel and 6 greens (one for each
     of the 6 classes).
     """
+    SUBSETS = None
 
     def __init__(self, dataset_fs_folder_or_root: FilesystemFolder, image_transforms: Optional[Compose] = None,
                  which_classes: str = 'all', logger: Optional[CommandLineLogger] = None, reds_only: bool = False):
@@ -200,7 +212,8 @@ class LINNearestDataset(LINDataset):
         LINDataset.__init__(self, dataset_fs_folder_or_root=dataset_fs_folder_or_root, which_classes=which_classes,
                             image_transforms=image_transforms, train_not_test=True, return_path=False, logger=logger)
         # Nearest-Neighbors info
-        self.nearest_neighbors_info_path = os.path.join(self.root, f'nearest_neighbors_info.json')
+        file_suffix = f'_{which_classes}' if which_classes in ['all', '6class'] else ''
+        self.nearest_neighbors_info_path = os.path.join(self.root, f'nearest_neighbors_info{file_suffix}.json')
         self.nearest_neighbors_info = None
         if os.path.exists(self.nearest_neighbors_info_path):
             try:
@@ -209,17 +222,19 @@ class LINNearestDataset(LINDataset):
             except JSONDecodeError as e:
                 self.logger.error(str(e))
                 os.remove(self.nearest_neighbors_info_path)
-        self.nearest_neighbors_path = os.path.join(self.root, f'nearest_neighbors.pth')
-        self.nearest_neighbors_all = None
+        self.nearest_neighbors_path = os.path.join(self.root, f'nearest_neighbors{file_suffix}.pth')
         self.nearest_neighbors = None
         if not os.path.exists(self.nearest_neighbors_path):
             self.logger.critical(f'nearest_neighbors_path={self.nearest_neighbors_path}: NOT FOUND')
             raise FileNotFoundError(self.nearest_neighbors_path)
         self.reds_only = reds_only
 
+        # Load all initially to avoid expensive conditionals
+        # self.load_nearest_neighbors()
+
     def load_nearest_neighbors(self):
-        self.nearest_neighbors_all = torch.load(self.nearest_neighbors_path)
-        self.nearest_neighbors = self.nearest_neighbors_all['reds' if self.reds_only else 'red_greens']
+        nearest_neighbors_all = torch.load(self.nearest_neighbors_path)
+        self.nearest_neighbors = nearest_neighbors_all['reds' if self.reds_only else 'red_greens']
 
     def __getitem__(self, index: int) -> Tensor:
         """
@@ -240,6 +255,24 @@ class LINNearestDataset(LINDataset):
         if self.nearest_neighbors is None:
             self.load_nearest_neighbors()
         return self.nearest_neighbors.shape[0]
+
+    @property
+    def datasets(self) -> dict:
+        if self.__class__.SUBSETS is None:
+            self.__class__.SUBSETS = {c: LINNearestSubset(self.nearest_neighbors[:, [0, ci + 1], :, :].clone())
+                                      for ci, c in enumerate(LINDataset.Classes)}
+        return self.__class__.SUBSETS
+
+    @property
+    def transforms(self):
+        return transforms.Compose([
+            ToNumpy(),
+            LinToTensorNormalized(),
+        ])
+
+    @transforms.setter
+    def transforms(self, t):
+        pass
 
 
 class LINDataloader(DataLoader):
@@ -294,7 +327,7 @@ class LINNearestDataloader(DataLoader):
 
     def __init__(self, dataset_fs_folder_or_root: FilesystemFolder, image_transforms: Optional[Compose] = None,
                  which_classes: str = 'all', logger: Optional[CommandLineLogger] = None, reds_only: bool = False,
-                 **dl_kwargs):
+                 train_not_test: bool = True, **dl_kwargs):
         """
         LINDataloader class constructor.
         :param (FilesystemFolder) dataset_fs_folder_or_root: a `utils.ifaces.FilesystemFolder` object to download / use
@@ -308,11 +341,16 @@ class LINNearestDataloader(DataLoader):
         :raises FileNotFoundError: either when the dataset is not present in local filesystem or when the
                                    `polarity_factor_info.json` is not present inside dataset's (local) root
         """
+        assert train_not_test is True, "Have not scraped test data for nearest neighbors yet"
         # Instantiate dataset
         dataset = LINNearestDataset(dataset_fs_folder_or_root=dataset_fs_folder_or_root, reds_only=reds_only,
                                     image_transforms=image_transforms, which_classes=which_classes, logger=logger)
         # Instantiate dataloader
         DataLoader.__init__(self, dataset=dataset, **dl_kwargs)
+
+    @property
+    def transforms(self):
+        return self.dataset.transforms
 
 
 class LINScraper:
@@ -457,7 +495,10 @@ class LINNearestNeighborsScraper:
                                for k in self.searched_classes}
         self.which_search = which_search
         self.dataset_gfolder: FilesystemFolder = dataset_gfolder
-        self.dataset_lin_gfolder: FilesystemFolder = dataset_gfolder.subfolder_by_name('LIN_48x80')
+        dataset_lin_gfolder: FilesystemFolder = dataset_gfolder.subfolder_by_name('LIN_48x80')
+        self.dataset_root = dataset_lin_gfolder.local_root
+        self.dataset_root_train = dataset_lin_gfolder.subfolder_by_name('LIN_Normalized_WT_size-48-80_train').local_root
+        self.dataset_root_test = dataset_lin_gfolder.subfolder_by_name('LIN_Normalized_WT_size-48-80_test').local_root
         self.to_np = ToNumpy()
         self.norm = LinToTensorNormalized()
 
@@ -733,8 +774,6 @@ class LINNearestNeighborsScraper:
         pass
 
     def generate_multi_channel_images(self):
-        dataset_root = self.dataset_lin_gfolder.local_root
-
         def path2class_idx(__path: str) -> int:
             for __class_idx, __class_name in enumerate(self.searched_classes):
                 if f'{__class_name}/' in __path:
@@ -746,8 +785,6 @@ class LINNearestNeighborsScraper:
             nearest_neighbors_info_path = os.path.join(query_dataset.root, f'nearest_neighbors_info.json')
             assert os.path.exists(nearest_neighbors_info_path), f'searched at: {nearest_neighbors_info_path}'
             nearest_neighbors_pth_path = os.path.join(query_dataset.root, f'nearest_neighbors.pth')
-            if os.path.exists(nearest_neighbors_pth_path):
-                os.rename(nearest_neighbors_pth_path, f'{nearest_neighbors_pth_path}.bak2')
             if os.path.exists(nearest_neighbors_pth_path):
                 _path = pathlib.Path(nearest_neighbors_pth_path)
                 self.logger.info(f'[generate][{query_dir}] File exists at ' +
@@ -784,7 +821,7 @@ class LINNearestNeighborsScraper:
                     nn_img_paths = nn_info_img['_one_per_class']['img_paths']
                     #   - load nn images
                     for nn_img_path_i, nn_img_path in enumerate(nn_img_paths):
-                        nn_img_path_abs = os.path.join(dataset_root, nn_img_path)
+                        nn_img_path_abs = os.path.join(self.dataset_root, nn_img_path)
                         nn_img = self.to_np(Image.open(nn_img_path_abs))
                         nn_img = self.norm(nn_img)
                         #   - add red channel to reds
@@ -822,6 +859,42 @@ class LINNearestNeighborsScraper:
             }, nearest_neighbors_pth_path)
             self.logger.info(f'[generate][{query_dir}] DONE ' +
                              f'(saved at: {nearest_neighbors_pth_path})')
+
+    def merge_nn_info_jsons(self):
+        nn_info_dict_6class = None
+        for query_dir, query_dataloader in tqdm(self.query_dataloaders.items()):
+            query_dataset: LINDataset = query_dataloader.dataset
+            #
+            nearest_neighbors_info_path = os.path.join(query_dataset.root, f'nearest_neighbors_info.json')
+            assert os.path.exists(nearest_neighbors_info_path), f'searched at: {nearest_neighbors_info_path}'
+            # Load json file
+            with open(nearest_neighbors_info_path) as json_fp:
+                nn_info_dict = json.load(json_fp)
+            if nn_info_dict_6class is None:
+                nn_info_dict_6class = nn_info_dict
+            else:
+                nn_info_dict_6class.update(nn_info_dict)
+        with open(os.path.join(self.dataset_root_train, 'nearest_neighbors_info_6class.json'), 'w') as json_fp:
+            json.dump(nn_info_dict_6class, json_fp, indent=4)
+
+    def merge_nn_pths(self):
+        nn_dict_6class = None
+        for query_dir, query_dataloader in tqdm(self.query_dataloaders.items()):
+            query_dataset: LINDataset = query_dataloader.dataset
+            #
+            nearest_neighbors_info_path = os.path.join(query_dataset.root, f'nearest_neighbors_info.json')
+            assert os.path.exists(nearest_neighbors_info_path), f'searched at: {nearest_neighbors_info_path}'
+            nearest_neighbors_pth_path = os.path.join(query_dataset.root, f'nearest_neighbors.pth')
+            assert os.path.exists(nearest_neighbors_pth_path), nearest_neighbors_pth_path
+            # Load pkl file
+            nn_dict = torch.load(nearest_neighbors_pth_path)
+            if nn_dict_6class is None:
+                nn_dict_6class = nn_dict
+            else:
+                nn_dict_6class['red_greens'] = torch.cat((nn_dict_6class['red_greens'], nn_dict['red_greens']), dim=0)
+                nn_dict_6class['reds'] = torch.cat((nn_dict_6class['reds'], nn_dict['reds']), dim=0)
+                nn_dict_6class['path2index'].update(nn_dict['path2index'])
+        torch.save(nn_dict_6class, os.path.join(self.dataset_root_train, 'nearest_neighbors_6class.pth'))
 
     def clear(self):
         fs_folder = self.dataset_gfolder \
@@ -871,13 +944,17 @@ class LINNearestNeighborsScraper:
             nn_scraper_train.logger.info('[generate_images] STARTING')
             nn_scraper_train.generate_multi_channel_images()
             nn_scraper_train.logger.info('[generate_images] DONE')
+            nn_scraper_train.logger.info('[merge_nn_*] STARTING')
+            nn_scraper_train.merge_nn_info_jsons()
+            # nn_scraper_train.merge_nn_pths()
+            nn_scraper_train.logger.info('[merge_nn_*] DONE')
         nn_scraper_train.logger.info('DONE')
 
 
 if __name__ == '__main__':
     _local_gdrive_root = '/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.gdrive_personal'
     # if click.confirm('Do you want to (re)scrape the dataset now?', default=True):
-    #     # Scape images to create info files
+    #     # # Scape images to create info files
     #     LINScraper.run(forward_pass=True, backward_pass=True)
     #     # Scrape nearest neighbors of each image in the training set
     #     LINNearestNeighborsScraper.run(_local_gdrive_root, k=5, forward_pass=False, backward_pass=False,
@@ -906,14 +983,27 @@ if __name__ == '__main__':
     # # _lin_alp14_test = LINDataset(dataset_fs_folder_or_root=_groot, train_not_test=False, which_classes='Alp14',
     # #                              logger=_lin_train.logger)
     # # # _lin.fetch_and_unzip()
-    _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Tea1')
-    sample = _lin_nn_alp14[0]
-    plt.imshow(sample[1:].reshape(48 * 6, 80), cmap="Greens")
-    plt.show()
+
     # _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Alp14', reds_only=True)
-    # plt.imshow(sample.reshape(48 * 6, 80), cmap="Reds")
+    # plt.imshow(_lin_nn_alp14[1].reshape(48 * 6, 80), cmap="Reds")
     # plt.show()
-    # print(_lin_alp14_train[0].shape)
+    # _lin_nn_alp14 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='Alp14')
+    # sample = _lin_nn_alp14[1]
+    # plt.imshow(sample[1:].reshape(48 * 6, 80), cmap="Greens")
+    # plt.show()
+
+    _lin_nn_6 = LINNearestDataset(dataset_fs_folder_or_root=_groot, which_classes='6class')
+    for sample_idx in [10, 100]:
+        sample = _lin_nn_6[sample_idx]
+        plt.subplots(7, 1, figsize=(3, 15))
+        plt.subplot(7, 1, 1)
+        plt.imshow(sample[0].reshape(48, 80), cmap="Reds")
+        for i in range(1, 7):
+            plt.subplot(7, 1, i + 1)
+            plt.imshow(sample[i].reshape(48, 80), cmap="Greens")
+        plt.tight_layout()
+        plt.show()
+    print(f'dataset length: {_lin_nn_6.__len__()}')
 
     # lin6dl = LINDataloader6Class(_groot, train_not_test=True, batch_size=10)
     # batch = next(iter(lin6dl))

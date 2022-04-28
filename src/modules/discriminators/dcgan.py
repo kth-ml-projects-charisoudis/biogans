@@ -9,7 +9,7 @@ from modules.partial.encoding import ContractingBlock
 from utils import pytorch
 from utils.command_line_logger import CommandLineLogger
 from utils.ifaces import BalancedFreezable, Verbosable
-from utils.pytorch import get_total_params, get_gradient_penalty, get_gradient_penalties
+from utils.pytorch import get_total_params, get_gradient_penalties
 from utils.string import to_human_readable
 
 
@@ -23,7 +23,7 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
     def __init__(self, c_in: int, c_hidden: int = 64, n_contracting_blocks: int = 4, use_spectral_norm: bool = False,
                  logger: Optional[CommandLineLogger] = None, adv_criterion: Optional[str] = None,
                  output_kernel_size: Optional[Tuple] = None, red_portion: Optional[float] = None,
-                 gp_lambda: bool = None):
+                 gp_lambda: bool = None, use_batch_norm: bool = True):
         """
         DCGanDiscriminator class constructor.
         :param (int) c_in: number of input channels
@@ -51,8 +51,8 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
             ContractingBlock(c_in=c_in, c_out=c_hidden, kernel_size=4, stride=2, padding=1, bias=False,
                              activation='lrelu', red_portion=red_portion),
             *[
-                ContractingBlock(c_hidden * 2 ** i, kernel_size=4, stride=2, padding=1, use_norm=True, bias=False,
-                                 norm_type='batch', activation='lrelu', red_portion=red_portion)
+                ContractingBlock(c_hidden * 2 ** i, kernel_size=4, stride=2, padding=1, use_norm=use_batch_norm,
+                                 bias=False, norm_type='batch', activation='lrelu', red_portion=red_portion)
                 for i in range(0, n_contracting_blocks - 1)
             ],
             ChannelsProjectLayer(c_hidden * 2 ** (n_contracting_blocks - 1), 1, use_spectral_norm=use_spectral_norm,
@@ -105,13 +105,32 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
         # gradient_penalty = gradient_penalties.mean(mean_dim)
         # return scores_a.mean(mean_dim) - scores_b.mean(mean_dim) + self.gp_lambda * gradient_penalty
 
+        # loss_on_real = self.get_loss(real, is_real=True, criterion=criterion)
+        # loss_on_fake = self.get_loss(fake, is_real=False, criterion=criterion)
+        # total_loss = loss_on_real + loss_on_fake
+        # if self.gp_lambda is None:
+        #     return total_loss
+        # # Calculate gradient penalty and append to loss
+        # gradient_penalty = get_gradient_penalty(disc=self, real=real, fake=fake).mean()
+        # return total_loss + self.gp_lambda * gradient_penalty
+
+        if type(criterion) == pytorch.WassersteinLoss:
+            scores_real = self(real)
+            scores_fake = self(fake)
+            gradient_penalties = get_gradient_penalties(self, real.data, fake.data)
+            mean_dim = 0 if scores_real.dim() == 1 else 1
+            gradient_penalty = gradient_penalties.mean(mean_dim)
+            return scores_real.mean(mean_dim) - scores_fake.mean(mean_dim) + self.gp_lambda * gradient_penalty
+
         loss_on_real = self.get_loss(real, is_real=True, criterion=criterion)
         loss_on_fake = self.get_loss(fake, is_real=False, criterion=criterion)
         total_loss = loss_on_real + loss_on_fake
         if self.gp_lambda is None:
             return total_loss
         # Calculate gradient penalty and append to loss
-        gradient_penalty = get_gradient_penalty(disc=self, real=real, fake=fake).mean()
+        gradient_penalties = get_gradient_penalties(self, real.data, fake.data)
+        mean_dim = 0 if real.dim() == 4 else 1
+        gradient_penalty = gradient_penalties.mean(mean_dim)
         return total_loss + self.gp_lambda * gradient_penalty
 
     # noinspection DuplicatedCode
@@ -132,7 +151,7 @@ class DCGanDiscriminator(nn.Module, BalancedFreezable, Verbosable):
         if type(criterion) == nn.modules.loss.BCELoss:
             predictions = nn.Sigmoid()(predictions)
         if type(criterion) == pytorch.WassersteinLoss:
-            reference = -1.0 * torch.ones_like(predictions) if is_real else 1.0 * torch.ones_like(predictions)
+            reference = 1.0 if is_real else -1.0
         else:
             reference = torch.ones_like(predictions) if is_real else torch.zeros_like(predictions)
         return criterion(predictions, reference)
@@ -247,10 +266,10 @@ class DCGanDiscriminatorInd6Class(nn.Module, BalancedFreezable, Verbosable):
         if type(criterion) == nn.modules.loss.BCELoss:
             predictions = nn.Sigmoid()(predictions)
         if type(criterion) == pytorch.WassersteinLoss:
-            reference = -1.0 if is_real else 1.0
+            reference = 1.0 if is_real else -1.0
         else:
             reference = torch.ones_like(predictions) if is_real else torch.zeros_like(predictions)
-        return criterion(predictions, 1.0 if is_real else -1.0)
+        return criterion(predictions, reference)
         # scores = self(x)
         # mean_dim = 0 if scores.dim() in [1, 4] else 1
         # return scores.mean(mean_dim) if is_real else -scores.mean(mean_dim)
@@ -260,9 +279,11 @@ class DCGanDiscriminatorInd6Class(nn.Module, BalancedFreezable, Verbosable):
 
 
 if __name__ == '__main__':
-    _disc = DCGanDiscriminator(c_in=2, n_contracting_blocks=4, use_spectral_norm=True, adv_criterion='MSE',
-                               output_kernel_size=(3, 5))
-    # print(_disc)
-    # print(_disc.nparams_hr)
-    out = _disc(torch.rand(6, 2, 2, 48, 80))
+    _c_in = 1 + 6
+    _disc = DCGanDiscriminator(c_in=_c_in, c_hidden=224, n_contracting_blocks=4, use_spectral_norm=False,
+                               adv_criterion='MSE', output_kernel_size=(3, 5), use_batch_norm=False)
+    print(_disc)
+    print('')
+    print(get_total_params(_disc, True, True))
+    out = _disc(torch.rand(10, 7, 48, 80))
     print(out.shape, out.dim())

@@ -154,7 +154,7 @@ class PPL(nn.Module):
 
 
 if __name__ == '__main__':
-    from modules.biogan import BioGanInd1class
+    from modules.biogan_ind import BioGanInd1class
     from utils.filesystems.local import LocalFolder, LocalFilesystem, LocalCapsule
 
     # Get GoogleDrive root folder

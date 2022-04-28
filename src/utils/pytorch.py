@@ -214,7 +214,7 @@ def get_gradient_penalty(disc: nn.Module, real: torch.Tensor, fake: torch.Tensor
     #     get_gradient(disc=disc, real=real, fake=fake, epsilon=epsilon)
     # )
     gradient_penalties = get_gradient_penalties(disc, real, fake)
-    mean_dim = 0 if real.dim() == 1 else 1
+    mean_dim = 0 if real.dim() == 4 else 1
     return gradient_penalties.mean(mean_dim)
 
 

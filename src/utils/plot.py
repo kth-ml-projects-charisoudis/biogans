@@ -3,7 +3,7 @@ import io
 import json
 import os
 import shutil
-from typing import Optional
+from typing import Optional, List
 
 import matplotlib
 import matplotlib.font_manager
@@ -17,9 +17,13 @@ from torchvision.transforms import transforms
 from utils.filesystems.gdrive.remote import GDriveFolder
 
 
-def create_img_grid(images: torch.Tensor, ncols: Optional[int] = None, nrows: Optional[int] = None, border: int = 2,
-                    black: float = 0.5, white_border_right: bool = False,
-                    gen_transforms: Optional[transforms.Compose] = None) -> torch.Tensor:
+def create_img_grid(images: torch.Tensor,
+                    ncols: Optional[int] = None,
+                    nrows: Optional[int] = None, border: int = 2,
+                    black: float = 0.5,
+                    white_border_right: bool = False,
+                    gen_transforms: Optional[transforms.Compose] = None,
+                    invert: bool = False) -> torch.Tensor:
     """
     :param (torch.Tensor) images: torch.Tensor object of shape N x (CxHxW) (similar to training tensors)
     :param (int) ncols:
@@ -49,10 +53,11 @@ def create_img_grid(images: torch.Tensor, ncols: Optional[int] = None, nrows: Op
     images_c = []
     for img in images:
         images_c.append(img[0])  # red
-    for img in images:
-        images_c.append(img[1])  # green
-    nrows = 2
-    ncols = len(images)
+    for j in range(1, images.shape[1]):
+        for img in images:
+            images_c.append(img[j])  # green
+    nrows = 2 if nrows is None else nrows
+    ncols = len(images) if ncols is None else ncols
 
     # Create a single (grouped) image for each row
     row_images = []
@@ -61,13 +66,16 @@ def create_img_grid(images: torch.Tensor, ncols: Optional[int] = None, nrows: Op
         _rheight = None
         for c in range(ncols):
             # Apply inverse image transforms to given images
-            image = images_c[r * ncols + c].float()
+            image = images_c[(r * ncols + c) if not invert else (c * nrows + r)].float()
             if _rheight is None:
                 _rheight = image.shape[0]
+
+            tr, tc = (r, c) if not invert else (c, r)
+
             if c == 0:
                 _rlist.append(black * torch.ones(3, _rheight, border).float())  # |
             # Real red channel
-            if r == 0:
+            if tr == 0:
                 image = torch.concat((image.unsqueeze(0),
                                       torch.zeros_like(image).unsqueeze(0),
                                       torch.zeros_like(image).unsqueeze(0)), dim=0)
@@ -85,14 +93,17 @@ def create_img_grid(images: torch.Tensor, ncols: Optional[int] = None, nrows: Op
 
     # Join row-images to form the final image
     _list = []
-    for ri in row_images:
+    for rii, ri in enumerate(row_images):
         vb = black * torch.ones(3, border, ri.shape[2]).float()
         if white_border_right:
             vb[:, :, -4 * border:] = 1.0
         _list.append(vb)  # ___
         _list.append(ri)  # |□|
         _list.append(vb)  # ---
-        _list.append(1.0 * torch.ones(3, 4 * border, ri.shape[2]).float())  # (gap)
+        if nrows == 3 and rii == 1:
+            pass
+        else:
+            _list.append(1.0 * torch.ones(3, 4 * border, ri.shape[2]).float())  # (gap)
     return torch.cat(_list[:-1], dim=1).cpu()
 
 
@@ -103,6 +114,18 @@ def create_img_grid_6class(x0: list, g0: list, g1: list, border: int = 2, black:
             x0[class_idx], g0[class_idx], g1[class_idx]
         ]), gen_transforms=None, border=border, black=black, white_border_right=class_idx < 5))
     return torch.cat(grids, dim=2)
+
+
+def unpack_multichannel(inp: torch.Tensor) -> List[torch.Tensor]:
+    out = []
+    for g in range(1, 7):
+        out.append(inp[[0, g]].detach().clone())
+    return out
+
+
+def create_img_grid_6class_joint(x0, g0, g1, border=2, black=0.5):
+    return create_img_grid(images=torch.stack([x0, g0, g1]), gen_transforms=None, border=border, black=black,
+                           nrows=3, ncols=7, invert=True)
 
 
 def ensure_matplotlib_fonts_exist(groot: GDriveFolder, force_rebuild: bool = False) -> bool:

@@ -181,8 +181,6 @@ class BioGanInd1class(nn.Module, IGanGModule):
         self.gen.to(device)
         self.disc.to(device)
 
-        torch.nn.BatchNorm1d()
-
         # # Define LR schedulers (after optimizer checkpoints have been loaded)
         # if gen_opt_conf['scheduler_type']:
         #     if gen_opt_conf['scheduler_type'] == 'cyclic':

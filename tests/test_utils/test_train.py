@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 
 from datasets.lin import LINDataloader
-from modules.biogan import BioGanInd1class
+from modules.biogan_ind import BioGanInd1class
 from utils.filesystems.local import LocalFolder, LocalCapsule, LocalFile
 from utils.pytorch import get_total_params
 from utils.train import get_optimizer, train_test_split, \

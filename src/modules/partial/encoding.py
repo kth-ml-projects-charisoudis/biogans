@@ -42,7 +42,7 @@ class ContractingBlock(nn.Module):
     """
 
     def __init__(self, c_in: int, use_norm: bool = False, kernel_size: int = 3, activation: Optional[str] = 'lrelu',
-                 c_out: int = None, stride: int = 2, padding: int = 1, padding_mode: str = 'reflect',
+                 c_out: int = None, stride: int = 2, padding: int = 1, padding_mode: str = 'zeros',
                  norm_type: str = 'instance', use_dropout: bool = False, bias: bool = True,
                  red_portion: Optional[float] = None):
         """
@@ -58,7 +58,7 @@ class ContractingBlock(nn.Module):
         :param (int) padding_mode: see torch.nn.Conv2d of more info on this argument
         :param (str) norm_type: available types are 'batch', 'instance', 'pixel', 'layer'
         :param (bool) use_dropout: set to True to add a nn.Dropout2d (aka Spatial Dropout) layer before activation layer
-        :param (bool) bias: set to False to disable bias in conv layers
+        :param (bool) bias: set False to disable bias in conv layers
         :param (optional) red_portion: if set, Separable architecture will be employed
         """
         super(ContractingBlock, self).__init__()
