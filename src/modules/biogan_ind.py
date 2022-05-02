@@ -628,7 +628,7 @@ class BioGanInd6Class(nn.Module, IGanGModule):
     def visualize_indices(self, indices: Union[int, tuple, Sequence]) -> Image:
         raise NotImplementedError('Cannot really implement reproducibility in Noise-to-Image context.')
 
-    def visualize(self, reproducible: bool = False, dl=None) -> Image:
+    def visualize(self, reproducible: bool = False, dl=None, save_path=None) -> Image:
         # Get first & last sample from saved images in self
         if self.x is None or self.g_out is None:
             assert dl is not None
@@ -652,7 +652,8 @@ class BioGanInd6Class(nn.Module, IGanGModule):
         return plot_grid(grid=grid, figsize=(14, 2),
                          footnote_l=f'epoch={str(self.epoch).zfill(3)} | step={str(self.step).zfill(10)}',
                          footnote_r=f'gen_loss={"{0:0.3f}".format(round(np.mean(self.gen_losses).item(), 3))}, '
-                                    f'disc_loss={"{0:0.3f}".format(round(np.mean(self.disc_losses).item(), 3))}')
+                                    f'disc_loss={"{0:0.3f}".format(round(np.mean(self.disc_losses).item(), 3))}',
+                         save_path=save_path)
 
 
 if __name__ == '__main__':

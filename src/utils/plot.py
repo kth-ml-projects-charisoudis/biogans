@@ -185,7 +185,7 @@ def ensure_matplotlib_fonts_exist(groot: GDriveFolder, force_rebuild: bool = Fal
 
 
 def plot_grid(grid: torch.Tensor or np.ndarray, figsize=tuple, footnote_l: Optional[str] = None,
-              footnote_r: Optional[str] = None) -> Image:
+              footnote_r: Optional[str] = None, save_path: str or None = None) -> Image:
     """
     Plots an image grid (created with `utils.plot.create_img_grid`)
     :param (torch.Tensor or numpy.ndarray) grid: a torch.Tensor or NumPy array object holding the image grid
@@ -212,6 +212,8 @@ def plot_grid(grid: torch.Tensor or np.ndarray, figsize=tuple, footnote_l: Optio
     fig = plt.gcf()
     if footnote_r:
         fig.text(x=1, y=0.01, s=footnote_r, fontsize=4, fontweight='light', horizontalalignment='right')
+    if save_path is not None:
+        plt.savefig(save_path)
     return pltfig_to_pil(fig)
 
 
