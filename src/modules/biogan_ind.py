@@ -131,6 +131,10 @@ class BioGanInd1class(nn.Module, IGanGModule):
         disc_conf['c_in'] = 2
         self.disc = DCGanDiscriminator(**disc_conf)
 
+        # Move models to {C,G,T}PU
+        self.gen.to(device)
+        self.disc.to(device)
+
         # Define optimizers
         gen_opt_conf = self._configuration['gen_opt']
         self.gen_opt, _ = get_optimizer(self.gen, **gen_opt_conf)
@@ -176,10 +180,6 @@ class BioGanInd1class(nn.Module, IGanGModule):
             # Initialize weights with small values
             self.gen = self.gen.apply(weights_init_naive)
             self.disc = self.disc.apply(weights_init_naive)
-
-        # Move models to {C,G,T}PU
-        self.gen.to(device)
-        self.disc.to(device)
 
         # # Define LR schedulers (after optimizer checkpoints have been loaded)
         # if gen_opt_conf['scheduler_type']:

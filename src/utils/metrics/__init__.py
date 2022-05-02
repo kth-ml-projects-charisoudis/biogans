@@ -104,6 +104,7 @@ class GanEvaluator(object):
                         tuple(map(lambda _m: _m.item(), metric))
                 else:
                     metrics_dict[metric_name] = metric.item()
+        gen.train()
         # Return metrics dict
         return metrics_dict
 
