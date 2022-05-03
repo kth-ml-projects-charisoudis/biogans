@@ -423,6 +423,7 @@ class IModule(FilesystemModel, Configurable, Evaluable, Visualizable, metaclass=
                 plt.legend()
             if metric_name.strip().lower() in ['f1', 'precision']:
                 continue
+            plt.tight_layout()
             # Get PIL image
             pil_img = pltfig_to_pil(plt.gcf())
             _returns.append(pil_img)
