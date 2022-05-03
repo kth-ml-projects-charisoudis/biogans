@@ -416,15 +416,15 @@ class IModule(FilesystemModel, Configurable, Evaluable, Visualizable, metaclass=
             if not is_sub_f1:
                 plt_title = f'{metric_name} Metric'
                 plt_subtitle = f'{filename_suffix.replace("_", " to ").replace("=", ": ").replace(".jpg", "")}'
+                plt.title(f'{plt_subtitle}', fontsize=10)
                 plt.suptitle(f'{plt_title}', fontsize=12, fontweight='bold')
-                plt.title(f'{plt_subtitle}', fontsize=10, )
                 plt.xlabel('epoch')
             elif metric_name.endswith('RECALL'):
                 plt.legend()
                 metric_name = '  F1'
             if metric_name.strip().lower() in ['f1', 'precision']:
                 continue
-            plt.tight_layout()
+            plt.tight_layout(rect=[0, 0, 1, 0.95])
             # Get PIL image
             pil_img = pltfig_to_pil(plt.gcf())
             _returns.append(pil_img)
