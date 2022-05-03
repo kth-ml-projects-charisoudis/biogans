@@ -417,11 +417,10 @@ class IModule(FilesystemModel, Configurable, Evaluable, Visualizable, metaclass=
                 plt.suptitle(f'{plt_title}', y=0.97, fontsize=12, fontweight='bold')
                 plt.title(f'{plt_subtitle}', pad=10., fontsize=10, )
                 plt.xlabel('epoch')
-            else:
-                if metric_name.endswith('RECALL'):
-                    plt.legend()
-                else:
-                    continue
+            elif metric_name.endswith('RECALL'):
+                plt.legend()
+            if metric_name.strip().lower() in ['f1', 'precision']:
+                continue
             # Get PIL image
             pil_img = pltfig_to_pil(plt.gcf())
             _returns.append(pil_img)
