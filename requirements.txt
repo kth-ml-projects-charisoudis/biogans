@@ -16,6 +16,6 @@ httplib2
 oauth2client
 pydrive
 tensorboard
-pyyaml
+pyyaml>=5.1
 h5py
 wget
