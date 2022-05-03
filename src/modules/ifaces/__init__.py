@@ -406,9 +406,11 @@ class IModule(FilesystemModel, Configurable, Evaluable, Visualizable, metaclass=
             # plt.plot(x, metric_data)
             x_new = np.linspace(x[0], x[-1], 300)
             plt.plot(x_new, make_interp_spline(x, metric_data, k=3)(x_new), '-.',
-                     color='#2a9ceb' if not is_sub_f1 else ('#4CAF50' if metric_name.endswith('RECALL') else '#FFC107'),
+                     alpha=1.0 if not is_sub_f1 else 0.5,
+                     color='#2a9ceb' if not is_sub_f1 else ('#4CAF50' if metric_name.endswith('RECALL') else '#F39C12'),
                      label=metric_name.lower().strip())
             plt.plot(x, metric_data, 'o',
+                     alpha=1.0 if not is_sub_f1 else 0.5,
                      color='#1f77b4' if not is_sub_f1 else ('#4CAF50' if metric_name.endswith('RECALL') else '#FFC107'))
             # Set title
             if not is_sub_f1:
