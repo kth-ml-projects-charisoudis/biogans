@@ -417,7 +417,7 @@ class IModule(FilesystemModel, Configurable, Evaluable, Visualizable, metaclass=
                 plt_title = f'{metric_name} Metric'
                 plt_subtitle = f'{filename_suffix.replace("_", " to ").replace("=", ": ").replace(".jpg", "")}'
                 plt.suptitle(f'{plt_title}', fontsize=12, fontweight='bold')
-                plt.title(f'{plt_subtitle}', pad=10., fontsize=10, )
+                plt.title(f'{plt_subtitle}', fontsize=10, )
                 plt.xlabel('epoch')
             elif metric_name.endswith('RECALL'):
                 plt.legend()
