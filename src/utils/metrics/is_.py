@@ -66,10 +66,12 @@ class IS(FID):
                 if cur_samples >= self.n_samples:
                     break_after = True
 
+                cur_batch_size = len(real_samples if condition_indices is None else real_samples[0])
+                if cur_batch_size % 8 != 0:
+                    continue
+
                 if hasattr(gen, 'resolution'):
                     real_samples = transforms.Resize(size=gen.resolution)(real_samples)
-
-                cur_batch_size = len(real_samples if condition_indices is None else real_samples[0])
 
                 # Compute predictions on fake
                 gen_inputs = torch.randn(cur_batch_size, z_dim, device=self.device)
