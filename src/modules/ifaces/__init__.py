@@ -331,7 +331,7 @@ class IModule(FilesystemModel, Configurable, Evaluable, Visualizable, metaclass=
                 vis_losses_folder.upload_file(local_filename=filepath, in_parallel=False, is_update=is_update)
                 self.logger.debug(f'Loss image from {filepath} uploaded successfully!')
                 # Upload svg
-                svg_filepath = filepath.replace(".jpg", ".svg")
+                svg_filepath = filepath.replace(".jpg", ".pdf")
                 is_update = os.path.exists(svg_filepath)
                 if is_update:
                     os.remove(svg_filepath)
@@ -437,7 +437,7 @@ class IModule(FilesystemModel, Configurable, Evaluable, Visualizable, metaclass=
                 vis_metrics_folder.upload_file(local_filename=filepath, in_parallel=False, is_update=is_update)
                 self.logger.debug(f'Metric file from {filepath} uploaded successfully!')
                 # Upload svg
-                svg_filepath = filepath.replace(".jpg", ".svg")
+                svg_filepath = filepath.replace(".jpg", ".pdf")
                 is_update = os.path.exists(svg_filepath)
                 if is_update:
                     os.remove(svg_filepath)
