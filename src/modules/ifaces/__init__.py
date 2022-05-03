@@ -421,7 +421,7 @@ class IModule(FilesystemModel, Configurable, Evaluable, Visualizable, metaclass=
                 plt.xlabel('epoch')
             elif metric_name.endswith('RECALL'):
                 plt.legend()
-                metric_name = '  F1'
+                metric_name = '  F1 - Precision - Recall'
             if metric_name.strip().lower() in ['f1', 'precision']:
                 continue
             plt.tight_layout(rect=[0, 0, 1, 0.95])
