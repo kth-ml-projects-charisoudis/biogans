@@ -388,9 +388,11 @@ class BioGanInd1class(nn.Module, IGanGModule):
         # Get first & last sample from saved images in self
         if self.x is None or self.g_out is None:
             assert dl is not None
+            self.eval()
             self.x = next(iter(dl)).detach().cpu()
             with torch.no_grad():
                 self.g_out = self.gen(self.gen.get_random_z(batch_size=self.x.shape[0], device=self.device)).cpu()
+            self.train()
         x_0 = self.x[0]
         g_out_0 = self.g_out[0]
         g_out__1 = self.g_out[-1]

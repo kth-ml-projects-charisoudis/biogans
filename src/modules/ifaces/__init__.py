@@ -398,19 +398,30 @@ class IModule(FilesystemModel, Configurable, Evaluable, Visualizable, metaclass=
         _returns = []
         for metric_name, metric_data in zip(('  FID', '  IS', '  F1', '  PRECISION', '  RECALL', '  SSIM'),
                                             (fids, iss, f1s, prs, rcs, ssims)):
+            is_sub_f1 = metric_name.endswith('PRECISION') or metric_name.endswith('RECALL')
             # Create a new figure
-            plt.figure(figsize=(10, 5), dpi=300, clear=True)
+            if not is_sub_f1:
+                plt.figure(figsize=(10, 5), dpi=300, clear=True)
             # Set data
             # plt.plot(x, metric_data)
             x_new = np.linspace(x[0], x[-1], 300)
-            plt.plot(x_new, make_interp_spline(x, metric_data, k=3)(x_new), '-.', color='#2a9ceb')
-            plt.plot(x, metric_data, 'o', color='#1f77b4')
+            plt.plot(x_new, make_interp_spline(x, metric_data, k=3)(x_new), '-.',
+                     color='#2a9ceb' if not is_sub_f1 else ('#4CAF50' if metric_name.endswith('RECALL') else '#FFC107'),
+                     label=metric_name.lower().strip())
+            plt.plot(x, metric_data, 'o',
+                     color='#1f77b4' if not is_sub_f1 else ('#4CAF50' if metric_name.endswith('RECALL') else '#FFC107'))
             # Set title
-            plt_title = f'{metric_name} Metric'
-            plt_subtitle = f'{filename_suffix.replace("_", " to ").replace("=", ": ").replace(".jpg", "")}'
-            plt.suptitle(f'{plt_title}', y=0.97, fontsize=12, fontweight='bold')
-            plt.title(f'{plt_subtitle}', pad=10., fontsize=10, )
-            plt.xlabel('epoch')
+            if not is_sub_f1:
+                plt_title = f'{metric_name} Metric'
+                plt_subtitle = f'{filename_suffix.replace("_", " to ").replace("=", ": ").replace(".jpg", "")}'
+                plt.suptitle(f'{plt_title}', y=0.97, fontsize=12, fontweight='bold')
+                plt.title(f'{plt_subtitle}', pad=10., fontsize=10, )
+                plt.xlabel('epoch')
+            else:
+                if metric_name.endswith('RECALL'):
+                    plt.legend()
+                else:
+                    continue
             # Get PIL image
             pil_img = pltfig_to_pil(plt.gcf())
             _returns.append(pil_img)
