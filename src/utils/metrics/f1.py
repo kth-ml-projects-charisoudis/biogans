@@ -71,6 +71,9 @@ class ManifoldEstimator:
         :param v: 2nd input vector of shape (batch_size, n_features)
         :return: a torch.Tensor object of shape (batch_size, batch_size)
         """
+        # FIX: u has more elements than v
+        if u.shape[0] > v.shape[0]:
+            u = u[:, v.shape[0]]
         # Squared norms of each row in U and V.
         norm_u = torch.norm(u, dim=1) ** 2
         norm_v = torch.norm(v, dim=1) ** 2
