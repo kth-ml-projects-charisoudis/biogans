@@ -121,14 +121,17 @@ class FID(nn.Module):
                                            disable=not show_progress, desc=desc):
                 if cur_samples >= self.n_samples:
                     break_after = True
+
+                cur_batch_size = len(target_output)
+                if cur_batch_size % 8 != 0:
+                    continue
+
                 # Compute real embeddings
                 #   - add 3rd channel
                 target_output = torch.concat((target_output, torch.zeros(target_output.shape[0], 1, 48, 80)), dim=1)
                 target_output = target_output.to(self.device)
                 real_embeddings = FID.InceptionV3Cropped(FID.InceptionV3Transforms(target_output))
                 real_embeddings_list.append(real_embeddings.detach().cpu())
-
-                cur_batch_size = len(target_output)
 
                 # Compute fake embeddings
                 gen_inputs = torch.randn(cur_batch_size, z_dim, device=self.device)
