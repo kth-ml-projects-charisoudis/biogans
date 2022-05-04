@@ -72,7 +72,7 @@ class GanEvaluator(object):
         self.f1_k = f1_k
 
     def evaluate(self, gen: nn.Module, metric_name: Optional[str] = None, show_progress: bool = True,
-                 dataset=None) -> Dict[str, float]:
+                 dataset=None, print_dict: bool = False) -> Dict[str, float]:
         """
         Evaluate the generator's current state and return a `dict` with metric names as keys and evaluation results as
         values.
@@ -106,6 +106,8 @@ class GanEvaluator(object):
                     metrics_dict[metric_name] = metric.item()
         gen.train()
         # Return metrics dict
+        if print_dict:
+            print(metrics_dict)
         return metrics_dict
 
 
@@ -114,10 +116,10 @@ class GanEvaluator6Class(GanEvaluator):
         GanEvaluator.__init__(self, *args, **kwargs)
 
     def evaluate(self, gen: nn.Module, metric_name: Optional[str] = None, show_progress: bool = True,
-                 dataset=None) -> Dict[str, float]:
+                 dataset=None, print_dict: bool = False) -> Dict[str, float]:
         assert hasattr(gen, 'gens') and hasattr(self.dataset, 'datasets')
         dict_list = [
-            super(GanEvaluator6Class, self).evaluate(gen_c, metric_name, show_progress, dataset_c)
+            super(GanEvaluator6Class, self).evaluate(gen_c, metric_name, show_progress, dataset_c, print_dict)
             for gen_c, dataset_c in zip(gen.gens, self.dataset.datasets.values())
         ]
         return {
