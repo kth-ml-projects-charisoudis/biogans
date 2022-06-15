@@ -96,19 +96,18 @@ class GanEvaluator(object):
         metrics_dict = {}
         if dataset is None:
             dataset = self.dataset
-        with torch.no_grad():
-            for metric_name in (self.calculators.keys() if not metric_name or 'all' == metric_name else (metric_name,)):
-                # Evaluate model
-                metric = self.calculators[metric_name](dataset, gen=gen, target_index=self.target_index,
-                                                       condition_indices=self.condition_indices, z_dim=self.z_dim,
-                                                       skip_asserts=True, show_progress=show_progress, k=self.f1_k,
-                                                       use_fid_embeddings=True)
-                # Unpack metrics
-                if 'f1' == metric_name:
-                    metrics_dict['f1'], metrics_dict['precision'], metrics_dict['recall'] = \
-                        tuple(map(lambda _m: _m.item(), metric))
-                else:
-                    metrics_dict[metric_name] = metric.item()
+        for metric_name in (self.calculators.keys() if not metric_name or 'all' == metric_name else (metric_name,)):
+            # Evaluate model
+            metric = self.calculators[metric_name](dataset, gen=gen, target_index=self.target_index,
+                                                   condition_indices=self.condition_indices, z_dim=self.z_dim,
+                                                   skip_asserts=True, show_progress=show_progress, k=self.f1_k,
+                                                   use_fid_embeddings=True)
+            # Unpack metrics
+            if 'f1' == metric_name:
+                metrics_dict['f1'], metrics_dict['precision'], metrics_dict['recall'] = \
+                    tuple(map(lambda _m: _m.item(), metric))
+            else:
+                metrics_dict[metric_name] = metric.item()
         gen.train()
         # Return metrics dict
         if print_dict:

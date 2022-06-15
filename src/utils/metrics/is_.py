@@ -57,51 +57,53 @@ class IS(FID):
             torch.cuda.empty_cache()
 
         assert isinstance(gen, Freezable), 'Generator should implement utils.ifaces.Freezable'
-        with gen.frozen():
-            cur_samples = 0
-            fake_predictions_list = []
-            break_after = False
-            for real_samples in self.tqdm(dataloader, total=int(math.ceil(self.n_samples / self.batch_size)),
-                                          disable=not show_progress, desc="IS"):
-                if cur_samples >= self.n_samples:
-                    break_after = True
 
-                cur_batch_size = len(real_samples if condition_indices is None else real_samples[0])
-                if cur_batch_size % 8 != 0:
-                    continue
+        with torch.no_grad():
+            with gen.frozen():
+                cur_samples = 0
+                fake_predictions_list = []
+                break_after = False
+                for real_samples in self.tqdm(dataloader, total=int(math.ceil(self.n_samples / self.batch_size)),
+                                              disable=not show_progress, desc="IS"):
+                    if cur_samples >= self.n_samples:
+                        break_after = True
 
-                if hasattr(gen, 'resolution'):
-                    real_samples = transforms.Resize(size=gen.resolution)(real_samples)
+                    cur_batch_size = len(real_samples if condition_indices is None else real_samples[0])
+                    if cur_batch_size % 8 != 0:
+                        continue
 
-                # Compute predictions on fake
-                gen_inputs = torch.randn(cur_batch_size, z_dim, device=self.device)
-                # gen_inputs = [gen_transforms(gen_input).to(self.device) for gen_input in gen_inputs] \
-                #     if condition_indices is not None else gen_inputs.to(self.device)
-                fake_output = gen(gen_inputs)
-                #   - add 3rd channel
-                fake_output = torch.concat(
-                    (fake_output, torch.zeros(fake_output.shape[0], 1, 48, 80).to(self.device)),
-                    dim=1
-                )
-                # ATTENTION: In order to pass generator's output through Inception we must re-normalize tensor stats!
-                # Generator output images in the range [-1, 1], since it uses a Tanh() activation layer, whereas
-                # Inception v3 receives tensors with its custom normalization. Solutions: 1) Invert normalization in
-                # gen_transforms and then pass the image through the Inception transforms | 2) Use the new
-                # ToTensorOrPass() transform fake_output = gen_transforms_inv(fake_output)
-                fake_predictions = FID.InceptionV3Classifier(FID.InceptionV3Transforms(fake_output))
-                fake_predictions_list.append(fake_predictions.detach().cpu())
+                    if hasattr(gen, 'resolution'):
+                        real_samples = transforms.Resize(size=gen.resolution)(real_samples)
 
-                cur_samples += cur_batch_size
-                if break_after:
-                    break
+                    # Compute predictions on fake
+                    gen_inputs = torch.randn(cur_batch_size, z_dim, device=self.device)
+                    # gen_inputs = [gen_transforms(gen_input).to(self.device) for gen_input in gen_inputs] \
+                    #     if condition_indices is not None else gen_inputs.to(self.device)
+                    fake_output = gen(gen_inputs)
+                    #   - add 3rd channel
+                    fake_output = torch.concat(
+                        (fake_output, torch.zeros(fake_output.shape[0], 1, 48, 80).to(self.device)),
+                        dim=1
+                    )
+                    # ATTENTION: In order to pass generator's output through Inception we must re-normalize tensor stats
+                    # Generator output images in the range [-1, 1], since it uses a Tanh() activation layer, whereas
+                    # Inception v3 receives tensors with its custom normalization. Solutions: 1) Invert normalization in
+                    # gen_transforms and then pass the image through the Inception transforms | 2) Use the new
+                    # ToTensorOrPass() transform fake_output = gen_transforms_inv(fake_output)
+                    fake_predictions = FID.InceptionV3Classifier(FID.InceptionV3Transforms(fake_output))
+                    fake_predictions_list.append(fake_predictions.detach().cpu())
 
-            fake_predictions = torch.cat(fake_predictions_list, dim=0)
+                    cur_samples += cur_batch_size
+                    if break_after:
+                        break
 
-            # Compute IS
-            # Compute marginal distribution, P(y) = 1/|x|*Σ{P(y|x)}, where x ~ P_g
-            p_y = torch.mean(fake_predictions, dim=0)
-            # Compute D_kl[p(y|xi)||p(y)] for every generated sample xi
-            # (credits to hantian_pang, see https://stackoverflow.com/a/54977657/13634700)
-            kls = [(p_y_given_xi * (p_y_given_xi / p_y).log()).sum() for p_y_given_xi in fake_predictions]
+                fake_predictions = torch.cat(fake_predictions_list, dim=0)
+
+                # Compute IS
+                # Compute marginal distribution, P(y) = 1/|x|*Σ{P(y|x)}, where x ~ P_g
+                p_y = torch.mean(fake_predictions, dim=0)
+                # Compute D_kl[p(y|xi)||p(y)] for every generated sample xi
+                # (credits to hantian_pang, see https://stackoverflow.com/a/54977657/13634700)
+                kls = [(p_y_given_xi * (p_y_given_xi / p_y).log()).sum() for p_y_given_xi in fake_predictions]
 
         return torch.exp(torch.mean(torch.stack(kls), dim=0))

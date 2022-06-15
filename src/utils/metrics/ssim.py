@@ -130,54 +130,55 @@ class SSIM(nn.Module):
             torch.cuda.empty_cache()
 
         assert isinstance(gen, Freezable), 'Generator should implement utils.ifaces.Freezable'
-        with gen.frozen():
-            cur_samples = 0
-            ssim_maps_list = []
-            break_after = False
-            for real_samples in self.tqdm(dataloader, total=int(math.ceil(self.n_samples / self.batch_size)),
-                                          disable=not show_progress, desc="SSIM"):
-                if cur_samples >= self.n_samples:
-                    break_after = True
+        with torch.no_grad():
+            with gen.frozen():
+                cur_samples = 0
+                ssim_maps_list = []
+                break_after = False
+                for real_samples in self.tqdm(dataloader, total=int(math.ceil(self.n_samples / self.batch_size)),
+                                              disable=not show_progress, desc="SSIM"):
+                    if cur_samples >= self.n_samples:
+                        break_after = True
 
-                if hasattr(gen, 'resolution'):
-                    real_samples = transforms.Resize(size=gen.resolution)(real_samples)
+                    if hasattr(gen, 'resolution'):
+                        real_samples = transforms.Resize(size=gen.resolution)(real_samples)
 
-                # Get target (real) images
-                target_output = real_samples[target_index] if target_index is not None else real_samples
-                target_output = target_output.to(self.device)
-                # if not skip_asserts:
-                #     assert target_output.min() < 0, f'target_output.min() < 0: FAILED, min={target_output.min()}'
-                #     assert target_output.min() >= -1, f'target_output.min() >= -1: FAILED, min={target_output.min()}'
-                #     assert target_output.max() > 0, f'target_output.max() > 0: FAILED, max={target_output.max()}'
-                #     assert target_output.max() <= 1, f'target_output.max() <= 1: FAILED, max={target_output.max()}'
+                    # Get target (real) images
+                    target_output = real_samples[target_index] if target_index is not None else real_samples
+                    target_output = target_output.to(self.device)
+                    # if not skip_asserts:
+                    #     assert target_output.min() < 0, f'target_output.min() < 0: FAILED, min={target_output.min()}'
+                    #     assert target_output.min() >= -1, f'target_output.min() >= -1: FAILED, min={target_output.min()}'
+                    #     assert target_output.max() > 0, f'target_output.max() > 0: FAILED, max={target_output.max()}'
+                    #     assert target_output.max() <= 1, f'target_output.max() <= 1: FAILED, max={target_output.max()}'
 
-                cur_batch_size = len(target_output)
+                    cur_batch_size = len(target_output)
 
-                # Generate fake images from conditions
-                gen_inputs = [real_samples[_i].to(self.device) for _i in condition_indices] \
-                    if condition_indices else [torch.randn(cur_batch_size, z_dim, device=self.device), ]
-                # gen_inputs = [gen_transforms(gen_input).to(self.device) for gen_input in gen_inputs] \
-                #     if condition_indices is not None else gen_inputs.to(self.device)
-                fake_output = gen(*gen_inputs)
-                fake_output_type = type(fake_output)
-                if fake_output_type != torch.Tensor and (type(fake_output) == tuple or type(fake_output) == list):
-                    fake_output = fake_output[-1]
-                # if not skip_asserts:
-                #     assert fake_output.min() < 0, f'fake_output.min() < 0: FAILED, min={fake_output.min()}'
-                #     assert fake_output.min() >= -1, f'fake_output.min() >= -1: FAILED, min={fake_output.min()}'
-                #     assert fake_output.max() > 0, f'fake_output.max() > 0: FAILED, max={fake_output.max()}'
-                #     assert fake_output.max() <= 1, f'fake_output.max() <= 1: FAILED, max={fake_output.max()}'
+                    # Generate fake images from conditions
+                    gen_inputs = [real_samples[_i].to(self.device) for _i in condition_indices] \
+                        if condition_indices else [torch.randn(cur_batch_size, z_dim, device=self.device), ]
+                    # gen_inputs = [gen_transforms(gen_input).to(self.device) for gen_input in gen_inputs] \
+                    #     if condition_indices is not None else gen_inputs.to(self.device)
+                    fake_output = gen(*gen_inputs)
+                    fake_output_type = type(fake_output)
+                    if fake_output_type != torch.Tensor and (type(fake_output) == tuple or type(fake_output) == list):
+                        fake_output = fake_output[-1]
+                    # if not skip_asserts:
+                    #     assert fake_output.min() < 0, f'fake_output.min() < 0: FAILED, min={fake_output.min()}'
+                    #     assert fake_output.min() >= -1, f'fake_output.min() >= -1: FAILED, min={fake_output.min()}'
+                    #     assert fake_output.max() > 0, f'fake_output.max() > 0: FAILED, max={fake_output.max()}'
+                    #     assert fake_output.max() <= 1, f'fake_output.max() <= 1: FAILED, max={fake_output.max()}'
 
-                # Check if
+                    # Check if
 
-                # Compute SSIM difference maps
-                ssim_maps_list.append(_ssim_map(target_output, fake_output, self.window, self.window_size, self.c_img))
-                cur_samples += cur_batch_size
+                    # Compute SSIM difference maps
+                    ssim_maps_list.append(_ssim_map(target_output, fake_output, self.window, self.window_size, self.c_img))
+                    cur_samples += cur_batch_size
 
-                if break_after:
-                    break
+                    if break_after:
+                        break
 
-            # Compute SSIM from difference maps
-            ssim_maps = torch.cat(ssim_maps_list, dim=0).cpu()
+                # Compute SSIM from difference maps
+                ssim_maps = torch.cat(ssim_maps_list, dim=0).cpu()
 
         return ssim_maps.mean().float() if self.size_average else ssim_maps.mean(1).mean(1).mean(1).float()

@@ -74,7 +74,6 @@ class C2ST(FID):
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
         # Create classifier and optimizer
         model = nn.Sequential(nn.Linear(real_embeddings.shape[1], 1), nn.Sigmoid())
-        model = model.to(self.device)
         optim = torch.optim.Adam(model.parameters())
         criterion = nn.BCELoss()
         model.train()
@@ -82,9 +81,8 @@ class C2ST(FID):
         for ep in range(self.epochs):
             for i, (data, target) in enumerate(train_loader):
                 optim.zero_grad()
-                p = model(data.to(self.device))
-                print(p.shape, target.shape)
-                loss = criterion(p, target.to(self.device).unsqueeze(-1))
+                p = model(data)
+                loss = criterion(p.flatten(), target.flatten())
                 loss.backward()
                 optim.step()
         # Compute test set accuracy
@@ -93,5 +91,5 @@ class C2ST(FID):
             for i, (data, target) in enumerate(test_loader):
                 p = model(data).numpy()
                 accuracy = accuracy_score(target, p > 0.5)
-        p_value = 1.0 - stats.norm.cdf(accuracy, loc=0.5, scale=np.sqrt(0.25 / real_embeddings.shape))
+        p_value = 1.0 - stats.norm.cdf(accuracy, loc=0.5, scale=np.sqrt(0.25 / real_embeddings.shape[0]))
         return p_value

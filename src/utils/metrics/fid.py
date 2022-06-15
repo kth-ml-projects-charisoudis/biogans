@@ -177,15 +177,16 @@ class FID(nn.Module):
         :return: a scalar torch.Tensor object containing the computed FID value
         """
         # Extract ImageNET embeddings
-        real_embeddings, fake_embeddings = self.get_embeddings(dataset, gen=gen, target_index=target_index, z_dim=z_dim,
-                                                               condition_indices=condition_indices,
-                                                               show_progress=show_progress)
-        FID.LastRealEmbeddings = real_embeddings.clone()
-        FID.LastFakeEmbeddings = fake_embeddings.clone()
-        # Compute sample means and covariance matrices
-        real_embeddings_mean = torch.mean(real_embeddings, dim=0)
-        fake_embeddings_mean = torch.mean(fake_embeddings, dim=0)
-        real_embeddings_cov = cov(real_embeddings)
-        fake_embeddings_cov = cov(fake_embeddings)
+        with torch.no_grad():
+            real_embeddings, fake_embeddings = self.get_embeddings(dataset, gen=gen, target_index=target_index,
+                                                                   z_dim=z_dim, condition_indices=condition_indices,
+                                                                   show_progress=show_progress)
+            FID.LastRealEmbeddings = real_embeddings.clone()
+            FID.LastFakeEmbeddings = fake_embeddings.clone()
+            # Compute sample means and covariance matrices
+            real_embeddings_mean = torch.mean(real_embeddings, dim=0)
+            fake_embeddings_mean = torch.mean(fake_embeddings, dim=0)
+            real_embeddings_cov = cov(real_embeddings)
+            fake_embeddings_cov = cov(fake_embeddings)
         # Compute Frechet distance of embedding vectors and return
         return _frechet_distance(real_embeddings_mean, fake_embeddings_mean, real_embeddings_cov, fake_embeddings_cov)

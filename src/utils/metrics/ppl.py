@@ -130,26 +130,27 @@ class PPL(nn.Module):
         # Create the dataloader instance
         if self.device in ['cuda:0', 'cuda'] and torch.cuda.is_available():
             torch.cuda.empty_cache()
-        # Sampling loop.
-        dist = []
-        cur_samples, break_after = 0, False
-        dataloader = [self.batch_size] * int(math.ceil(self.n_samples / self.batch_size))
-        for cur_batch_size in self.tqdm(dataloader, disable=not show_progress, desc='PPL'):
-            if cur_samples >= self.n_samples:
-                break_after = True
+        # Sampling loop
+        with torch.no_grad():
+            dist = []
+            cur_samples, break_after = 0, False
+            dataloader = [self.batch_size] * int(math.ceil(self.n_samples / self.batch_size))
+            for cur_batch_size in self.tqdm(dataloader, disable=not show_progress, desc='PPL'):
+                if cur_samples >= self.n_samples:
+                    break_after = True
 
-            x = self.sampler(cur_batch_size, gen=gen)
-            dist.append(x)
+                x = self.sampler(cur_batch_size, gen=gen)
+                dist.append(x)
 
-            cur_samples += cur_batch_size
-            if break_after:
-                break
+                cur_samples += cur_batch_size
+                if break_after:
+                    break
 
-        # Compute PPL
-        dist = torch.cat(dist)[:cur_samples].detach().cpu().numpy()
-        lo = np.percentile(dist, 1, interpolation='lower')
-        hi = np.percentile(dist, 99, interpolation='higher')
-        ppl = np.extract(np.logical_and(dist >= lo, dist <= hi), dist).mean()
+            # Compute PPL
+            dist = torch.cat(dist)[:cur_samples].detach().cpu().numpy()
+            lo = np.percentile(dist, 1, interpolation='lower')
+            hi = np.percentile(dist, 99, interpolation='higher')
+            ppl = np.extract(np.logical_and(dist >= lo, dist <= hi), dist).mean()
         return torch.tensor(ppl)
 
 
@@ -186,7 +187,7 @@ if __name__ == '__main__':
     ###################################
     #   - initialize model
     biogan = BioGanInd1class(model_fs_folder_or_root=_models_groot, config_id='default',
-                            chkpt_epoch=None, evaluator=None, device=exec_device, log_level='debug')
+                             chkpt_epoch=None, evaluator=None, device=exec_device, log_level='debug')
     biogan.logger.debug(f'Using device: {str(exec_device)}')
     biogan.logger.debug(f'Model initialized. Number of params = {biogan.nparams_hr}')
 
