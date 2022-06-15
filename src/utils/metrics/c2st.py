@@ -81,7 +81,7 @@ class C2ST(FID):
         for ep in range(self.epochs):
             for i, (data, target) in enumerate(train_loader):
                 optim.zero_grad()
-                p = self.model(data)
+                p = model(data)
                 loss = criterion(p.flatten(), target.flatten())
                 loss.backward()
                 optim.step()
@@ -89,7 +89,7 @@ class C2ST(FID):
         model.eval()
         with torch.no_grad():
             for i, (data, target) in enumerate(test_loader):
-                p = self.model(data).numpy()
+                p = model(data).numpy()
                 accuracy = accuracy_score(target, p > 0.5)
         p_value = 1.0 - stats.norm.cdf(accuracy, loc=0.5, scale=np.sqrt(0.25 / real_embeddings.shape))
         return p_value
