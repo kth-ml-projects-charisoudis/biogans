@@ -84,7 +84,7 @@ class C2ST(FID):
                 optim.zero_grad()
                 p = model(data.to(self.device))
                 print(p.shape, target.shape)
-                loss = criterion(p, target.to(self.device))
+                loss = criterion(p, target.to(self.device).unsqueeze(-1))
                 loss.backward()
                 optim.step()
         # Compute test set accuracy
