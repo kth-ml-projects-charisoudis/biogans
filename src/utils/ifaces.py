@@ -598,18 +598,20 @@ class FilesystemModel(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def update_metrics(self, epoch: Optional[int] = None) -> List[FilesystemFile]:
+    def update_metrics(self, epoch: Optional[int] = None, which: str = all) -> List[FilesystemFile]:
         """
         Re-run evaluator for checkpoints of the given :att:`epoch`, updating existing metrics.
         :param epoch: see `utils.ifaces.FilesystemModel::list_checkpoints()`
+        :param str which: which metric (key) should be updated. If set to "all" then the entire evaluator should run.
         :return: see `utils.ifaces.FilesystemModel::list_checkpoints()`
         """
         raise NotImplementedError
 
     @abc.abstractmethod
-    def update_all_metrics(self) -> Dict[int, List[FilesystemFile]]:
+    def update_all_metrics(self, which: str = all) -> Dict[int, List[FilesystemFile]]:
         """
         Re-run evaluator for all model checkpoints, updating all existing metrics.
+        :param str which: which metric (key) should be updated. If set to "all" then the entire evaluator should run.
         :return: a `list` of `utils.ifaces.FilesystemFile` objects of the updated model metrics
         """
         raise NotImplementedError

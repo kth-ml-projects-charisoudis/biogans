@@ -1,10 +1,13 @@
 from typing import Optional, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
+from scipy import stats
+from sklearn.metrics import accuracy_score
 from torch import Tensor
 # noinspection PyProtectedMember
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, random_split
 
 from utils.ifaces import FilesystemFolder
 from utils.metrics.fid import FID
@@ -19,7 +22,7 @@ class C2ST(FID):
     """
 
     def __init__(self, model_fs_folder_or_root: Union[FilesystemFolder, str], device: torch.device or str = 'cpu',
-                 n_samples: int = 1024, batch_size: int = 8):
+                 n_samples: int = 1024, batch_size: int = 8, train_epochs: int = 100):
         """
         C2ST class constructor.
         :param (FilesystemFolder or str) model_fs_folder_or_root: absolute path to model checkpoints directory or
@@ -31,6 +34,7 @@ class C2ST(FID):
         """
         super(C2ST, self).__init__(model_fs_folder_or_root=model_fs_folder_or_root, device=device,
                                    n_samples=n_samples, batch_size=batch_size)
+        self.epochs = train_epochs
 
     # noinspection PyUnusedLocal
     def forward(self, dataset: Dataset, gen: nn.Module, target_index: Optional[int] = None,
@@ -61,6 +65,31 @@ class C2ST(FID):
         else:
             real_embeddings = FID.LastRealEmbeddings
             fake_embeddings = FID.LastFakeEmbeddings
-        # Initialize manifolds
-        c2st = 0.0
-        return c2st
+        # Create dataset/dataloader
+        train_labels = torch.cat((torch.zeros(len(real_embeddings)), torch.ones(len(fake_embeddings))))
+        train_set = torch.utils.data.TensorDataset(torch.cat((real_embeddings, fake_embeddings)), train_labels)
+        len_ = len(train_set)
+        train_dataset, test_dataset = random_split(train_set, [round(len_ * 0.5), round(len_ * 0.5)])  # 60-40 split
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
+        # Create classifier and optimizer
+        model = nn.Sequential(nn.Linear(real_embeddings.shape[1], 1), nn.Sigmoid())
+        optim = torch.optim.Adam(model.parameters())
+        criterion = nn.BCELoss()
+        model.train()
+        # Train model on training set
+        for ep in range(self.epochs):
+            for i, (data, target) in enumerate(train_loader):
+                optim.zero_grad()
+                p = self.model(data)
+                loss = criterion(p.flatten(), target.flatten())
+                loss.backward()
+                optim.step()
+        # Compute test set accuracy
+        model.eval()
+        with torch.no_grad():
+            for i, (data, target) in enumerate(test_loader):
+                p = self.model(data).numpy()
+                accuracy = accuracy_score(target, p > 0.5)
+        p_value = 1.0 - stats.norm.cdf(accuracy, loc=0.5, scale=np.sqrt(0.25 / real_embeddings.shape))
+        return p_value

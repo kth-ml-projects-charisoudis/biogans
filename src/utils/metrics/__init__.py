@@ -8,6 +8,7 @@ from torch import nn
 from torch.utils.data import Dataset, Subset
 
 from utils.ifaces import FilesystemFolder
+from utils.metrics.c2st import C2ST
 from utils.metrics.f1 import F1
 from utils.metrics.fid import FID
 from utils.metrics.is_ import IS
@@ -64,6 +65,8 @@ class GanEvaluator(object):
             'ssim': SSIM(n_samples=n_samples, batch_size=batch_size, c_img=ssim_c_img, device=device),
             'ppl': PPL(model_fs_folder_or_root=model_fs_folder_or_root, n_samples=n_samples,
                        batch_size=batch_size, device=device),
+            'c2st': C2ST(model_fs_folder_or_root=model_fs_folder_or_root, n_samples=n_samples,
+                         batch_size=batch_size, device=device, train_epochs=100),
         }
         # Save args
         self.target_index = target_index
@@ -80,6 +83,8 @@ class GanEvaluator(object):
         :param (optional) metric_name: the name of the evaluation metric to be applied
         :param (bool) show_progress: set to True to have the progress of evaluation metrics displayed (using `tqdm` lib)
         :param (optional) dataset: override `self.dataset` for this evaluation
+        :param (bool) print_dict: set to True to print the metrics dict (e.g. in multiple classes to log intermediate
+                                  results)
         :return: if :attr:`metric` is `None` then a `dict` of all available metrics is returned, only the given metric
                  is returned otherwise
         """

@@ -800,10 +800,11 @@ class GDriveModel(FilesystemModel):
                 _return_dict[_epoch] = _epoch_metrics_list
         return _return_dict
 
-    def update_metrics(self, epoch: Optional[int] = None) -> List[FilesystemFile]:
+    def update_metrics(self, epoch: Optional[int] = None, which: str = 'all') -> List[FilesystemFile]:
         """
         Re-run evaluator for checkpoints of the given :att:`epoch`, updating existing metrics.
         :param epoch: see `utils.ifaces.FilesystemModel::list_checkpoints()`
+        :param str which: which metric (key) should be updated. If set to "all" then the entire evaluator should run.
         :return: see `utils.ifaces.FilesystemModel::list_checkpoints()`
         """
         assert isinstance(self, (torch.nn.Module, Evaluable)), 'cannot update metrics if self is not a nn.Module ' + \
@@ -828,10 +829,15 @@ class GDriveModel(FilesystemModel):
             except RuntimeError as _e:
                 self.logger.critical(f'Checkpoint NOT LOADED (epoch={epoch}, step={_step}): {str(_e)}')
                 continue
+            #   - get current metrics
+            _metrics_dict_old = {}
+            if os.path.exists(_epoch_metric.path):
+                with open(_epoch_metric.path) as _json_fp:
+                    _metrics_dict_old = json.load(_json_fp)
             #   - evaluate model
-            _metrics_dict = self.evaluate('all', show_progress=True)
+            _metrics_dict = self.evaluate(which, show_progress=True)
             with open(_epoch_metric.path, 'w') as _json_fp:
-                json.dump(_metrics_dict, fp=_json_fp, indent=4)
+                json.dump({**_metrics_dict_old, **_metrics_dict}, fp=_json_fp, indent=4)
             #   - overwrite file
             _epoch_metric.folder.upload_file(local_filename=_epoch_metric.path, in_parallel=False, show_progress=True,
                                              is_update=True)
@@ -842,9 +848,10 @@ class GDriveModel(FilesystemModel):
         # Return old files
         return self.list_metrics(epoch=epoch)
 
-    def update_all_metrics(self) -> Dict[int, List[FilesystemFile]]:
+    def update_all_metrics(self, which: str = 'all') -> Dict[int, List[FilesystemFile]]:
         """
         Re-run evaluator for all model checkpoints, updating all existing metrics.
+        :param str which: which metric (key) should be updated. If set to "all" then the entire evaluator should run.
         :return: a `list` of `utils.ifaces.FilesystemFile` objects of the updated model metrics
         """
         assert isinstance(self, (torch.nn.Module, Evaluable)), 'cannot update metrics if self is not a nn.Module ' + \
@@ -854,7 +861,7 @@ class GDriveModel(FilesystemModel):
         # Loop through all current metric files
         _epoch: int
         for _epoch in sorted(self.metrics_epoch_gfolders.keys(), key=lambda _k: int(_k)):
-            _epoch_metrics_list = self.update_metrics(epoch=_epoch)
+            _epoch_metrics_list = self.update_metrics(epoch=_epoch, which=which)
             if len(_epoch_metrics_list) > 0:
                 _return_dict[_epoch] = _epoch_metrics_list
         return _return_dict
