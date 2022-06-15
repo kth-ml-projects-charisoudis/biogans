@@ -83,7 +83,7 @@ class C2ST(FID):
             for i, (data, target) in enumerate(train_loader):
                 optim.zero_grad()
                 p = model(data.to(self.device))
-                print(p.shape, target.shapes)
+                print(p.shape, target.shape)
                 loss = criterion(p, target.to(self.device))
                 loss.backward()
                 optim.step()
