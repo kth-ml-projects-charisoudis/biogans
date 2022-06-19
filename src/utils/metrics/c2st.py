@@ -1,10 +1,12 @@
 from typing import Optional, Union
 
 import numpy as np
+import sklearn
 import torch
 import torch.nn as nn
 from scipy import stats
-from sklearn.metrics import accuracy_score
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, hamming_loss
 from torch import Tensor
 # noinspection PyProtectedMember
 from torch.utils.data import Dataset, random_split
@@ -22,7 +24,7 @@ class C2ST(FID):
     """
 
     def __init__(self, model_fs_folder_or_root: Union[FilesystemFolder, str], device: torch.device or str = 'cpu',
-                 n_samples: int = 1024, batch_size: int = 8, train_epochs: int = 100):
+                 n_samples: int = 1024, batch_size: int = 8, train_epochs: int = 100, use_sklearn: bool = True):
         """
         C2ST class constructor.
         :param (FilesystemFolder or str) model_fs_folder_or_root: absolute path to model checkpoints directory or
@@ -31,10 +33,14 @@ class C2ST(FID):
         :param (int) n_samples: the total number of samples used to compute the metric (defaults to 512; the higher this
                           number gets, the more accurate the metric is)
         :param (int) batch_size: the number of samples to precess at each loop
+        :param (bool) use_sklearn: set to True to train/eval the classifier using Scikit-Learn builtin classes
         """
         super(C2ST, self).__init__(model_fs_folder_or_root=model_fs_folder_or_root, device=device,
                                    n_samples=n_samples, batch_size=batch_size)
         self.epochs = train_epochs
+        self.use_sklearn = use_sklearn
+        self.n_bootstraps = 10
+        self.real_vs_real = False
 
     # noinspection PyUnusedLocal
     def forward(self, dataset: Dataset, gen: nn.Module, target_index: Optional[int] = None,
@@ -66,30 +72,64 @@ class C2ST(FID):
             real_embeddings = FID.LastRealEmbeddings
             fake_embeddings = FID.LastFakeEmbeddings
         # Create dataset/dataloader
-        train_labels = torch.cat((torch.zeros(len(real_embeddings)), torch.ones(len(fake_embeddings))))
-        train_set = torch.utils.data.TensorDataset(torch.cat((real_embeddings, fake_embeddings)), train_labels)
-        len_ = len(train_set)
-        train_dataset, test_dataset = random_split(train_set, [round(len_ * 0.5), round(len_ * 0.5)])  # 60-40 split
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
-        # Create classifier and optimizer
-        model = nn.Sequential(nn.Linear(real_embeddings.shape[1], 1), nn.Sigmoid())
-        optim = torch.optim.Adam(model.parameters())
-        criterion = nn.BCELoss()
-        model.train()
-        # Train model on training set
-        for ep in range(self.epochs):
-            for i, (data, target) in enumerate(train_loader):
-                optim.zero_grad()
-                p = model(data)
-                loss = criterion(p.flatten(), target.flatten())
-                loss.backward()
-                optim.step()
-        # Compute test set accuracy
-        model.eval()
-        with torch.no_grad():
-            for i, (data, target) in enumerate(test_loader):
-                p = model(data).numpy()
-                accuracy = accuracy_score(target, p > 0.5)
-        p_value = 1.0 - stats.norm.cdf(accuracy, loc=0.5, scale=np.sqrt(0.25 / real_embeddings.shape[0]))
+        if self.real_vs_real:
+            train_labels = torch.cat((torch.zeros(len(real_embeddings) // 2), torch.ones(len(real_embeddings) // 2)))
+            train_set = torch.utils.data.TensorDataset(real_embeddings, train_labels)
+        else:
+            train_labels = torch.cat((torch.zeros(len(real_embeddings)), torch.ones(len(fake_embeddings))))
+            train_set = torch.utils.data.TensorDataset(torch.cat((real_embeddings, fake_embeddings)), train_labels)
+        if self.use_sklearn:
+            # Source: https://github.com/rhr407/EVAGAN/blob/master/classifiers.py
+            clf = LogisticRegression(max_iter=1000)
+            loss = hamming_loss
+
+            X, y = train_set.tensors
+            X, y = X.cpu().detach().numpy(), y.cpu().detach().numpy()
+            X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y, random_state=42)
+            y_pred = clf.fit(X_train, y_train).predict(X_test)
+            emp_loss = loss(y_test, y_pred)
+
+            bs_losses = []
+            y_bar = np.mean(y)
+
+            bs_losses = []
+            y_bar = np.mean(y)
+
+            for b in range(self.n_bootstraps):
+                y_rand = np.random.binomial(1, y_bar, size=y.shape[0])
+                X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y_rand, random_state=42)
+                y_pred_bs = clf.fit(X_train, y_train).predict(X_test)
+                bs_losses += [loss(y_test, y_pred_bs)]
+            pc = stats.percentileofscore(sorted(bs_losses), emp_loss) / 100.0
+            p_value = np.array([pc if pc < y_bar else 1 - pc, ])
+        else:
+            len_ = len(train_set)
+            train_dataset, test_dataset = random_split(train_set,
+                                                       [round(len_ * 0.75), round(len_ * 0.25)])  # 75-25 split
+            train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+            test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
+            # Create classifier and optimizer
+            model = nn.Sequential(nn.Linear(real_embeddings.shape[1], 1), nn.Sigmoid())
+            optim = torch.optim.Adam(model.parameters())
+            criterion = nn.BCELoss()
+            model.train()
+            # Train model on training set
+            for ep in range(self.epochs):
+                for i, (data, target) in enumerate(train_loader):
+                    optim.zero_grad()
+                    p = model(data)
+                    loss = criterion(p.flatten(), target.flatten())
+                    loss.backward()
+                    optim.step()
+            # Compute test set accuracy
+            model.eval()
+            with torch.no_grad():
+                accuracy = 0.0
+                n = 0
+                for i, (data, target) in enumerate(test_loader):
+                    p = model(data).numpy()
+                    accuracy += target.shape[0] * accuracy_score(target, p >= 0.5)
+                    n += target.shape[0]
+            accuracy /= n
+            p_value = 1.0 - stats.norm.cdf(accuracy, loc=0.5, scale=np.sqrt(0.25 / real_embeddings.shape[0]))
         return p_value

@@ -696,7 +696,7 @@ if __name__ == '__main__':
                                    device=exec_device, n_samples=16, batch_size=8, f1_k=2, ssim_c_img=2)
     #   - initialize model
     _chkpt_step = f'aosokin:{PROJECT_DIR_PATH}/aosokin_checkpoints/auto'
-    # chkpt_step = None
+    # _chkpt_step = None
     # try:
     #     if chkpt_step == 'latest':
     #         _chkpt_step = chkpt_step
