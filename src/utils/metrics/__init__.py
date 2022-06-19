@@ -7,6 +7,7 @@ from torch import nn
 # noinspection PyProtectedMember
 from torch.utils.data import Dataset, Subset
 
+from modules.ifaces import IGanGModule
 from utils.ifaces import FilesystemFolder
 from utils.metrics.c2st import C2ST
 from utils.metrics.f1 import F1
@@ -25,7 +26,7 @@ class GanEvaluator(object):
     def __init__(self, model_fs_folder_or_root: FilesystemFolder, gen_dataset: Dataset, n_samples: int = 1e4,
                  batch_size: int = 32, ssim_c_img: int = 3, device: torch.device or str = 'cpu',
                  target_index: Optional[int] = None, condition_indices: Optional[Union[int, tuple]] = None,
-                 z_dim: Optional[int] = None, f1_k: int = 3):
+                 z_dim: Optional[int] = None, f1_k: int = 3, gan_instance=None, c2st_epochs: int = 100):
         """
         GanEvaluator class constructor.
         :param (FilesystemFolder) model_fs_folder_or_root: absolute path to model checkpoints directory or
@@ -66,13 +67,23 @@ class GanEvaluator(object):
             'ppl': PPL(model_fs_folder_or_root=model_fs_folder_or_root, n_samples=n_samples,
                        batch_size=batch_size, device=device),
             'c2st': C2ST(model_fs_folder_or_root=model_fs_folder_or_root, n_samples=n_samples,
-                         batch_size=batch_size, device=device, train_epochs=100),
+                         batch_size=batch_size, device=device, train_epochs=c2st_epochs, gan_instance=gan_instance),
         }
         # Save args
         self.target_index = target_index
         self.condition_indices = condition_indices
         self.z_dim = z_dim
         self.f1_k = f1_k
+        self._gan_instance = gan_instance
+
+    @property
+    def gan_instance(self) -> IGanGModule:
+        return self._gan_instance
+
+    @gan_instance.setter
+    def gan_instance(self, gan_instance: IGanGModule) -> None:
+        self._gan_instance = gan_instance
+        self.calculators['c2st'].gan = gan_instance
 
     def evaluate(self, gen: nn.Module, metric_name: Optional[str] = None, show_progress: bool = True,
                  dataset=None, print_dict: bool = False) -> Dict[str, float]:

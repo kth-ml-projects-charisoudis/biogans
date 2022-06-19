@@ -710,7 +710,7 @@ class GDriveFilesystem(Filesystem):
             return True
         # Download file from Google Drive to local root
         try:
-            # Create HTTP request to GoogleDrive API
+            # Create HTTP requests to GoogleDrive API
             file_request = self.gservice_files.get_media(fileId=gfile['id'])
             # Check if previous partial download exists, and read current progress
             dl_filepath = f'{local_filepath}.download'

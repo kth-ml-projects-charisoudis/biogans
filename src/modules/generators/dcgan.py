@@ -105,6 +105,7 @@ class DCGanGenerator(nn.Module, BalancedFreezable):
         )
         self.gen = nn.Sequential(*layers)
         self.z_dim = z_dim
+        self.red_portion = red_portion
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         # assert z.dim() == 2, f'z must be 2-dimensional ({z.dim()}-d tensor provided)'
@@ -157,6 +158,7 @@ class DCGanGeneratorInd6Class(nn.Module, BalancedFreezable):
             for _ in range(6)
         ])
         self.z_dim = z_dim
+        self.red_portion = red_portion
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         out = [None] * 6

@@ -531,11 +531,12 @@ class IGanGModule(IGModule, metaclass=abc.ABCMeta):
             try:
                 from utils.metrics import GanEvaluator
                 self.evaluator = GanEvaluator(model_fs_folder_or_root=model_fs_folder_or_root, device=device,
-                                              **evaluator_kwargs)
+                                              gan_instance=self, **evaluator_kwargs)
             except TypeError or AttributeError:
                 self.evaluator = None
         else:
             self.evaluator = evaluator
+            self.evaluator.gan_instance = self
         if evaluator is not None and dataset_len is None:
             self.dataset_len = len(evaluator.dataset)
 

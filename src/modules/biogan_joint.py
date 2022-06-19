@@ -1,3 +1,5 @@
+import math
+import os
 import pathlib
 from typing import Optional, Sequence, Tuple, Union
 
@@ -7,6 +9,7 @@ import numpy as np
 import torch
 from PIL.Image import Image
 from torch import nn, Tensor
+from torch.autograd import Variable
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchvision.transforms import Compose
 
@@ -163,6 +166,26 @@ class BioGanJoint6Class(nn.Module, IGanGModule):
     ## Training
     #################################
 
+    def generate_fixed_noise(self, batch_size: int = 64):
+        # Fixed noise is stored in "<MODEL_GROOT>/Metrics/fixed_noise.pth"
+        fixed_noise_gfile = self.metrics_gfolder.file_by_name('fixed_noise.pth')
+        if fixed_noise_gfile is not None:
+            assert fixed_noise_gfile.download(in_parallel=False, show_progress=True), 'Error fetching fixed noise file'
+            fixed_noise = torch.load(fixed_noise_gfile.path)
+        else:
+            fixed_noise = self.gen.get_random_z(batch_size)
+            if self.IS_SEPARABLE:
+                # create groups of 8 samples with the same red channel
+                group_size = 8
+                n_red_noise = int(self.gen.z_dim * self.gen.red_portion)
+                for i_group in range(math.ceil(batch_size / float(group_size))):
+                    group_start = i_group * group_size
+                    for i_element in range(1, min(group_size, batch_size - group_start)):
+                        fixed_noise[group_start + i_element, :n_red_noise] = fixed_noise[group_start, :n_red_noise]
+            torch.save(fixed_noise.cpu(), os.path.join(self.metrics_gfolder.local_root, 'fixed_noise.pth'))
+            self.metrics_gfolder.upload_file(local_filename='fixed_noise.pth', in_parallel=False, show_progress=True)
+        return Variable(fixed_noise, requires_grad=False)
+
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         # Update gdrive model state
         batch_size = x.shape[0]
@@ -300,6 +323,10 @@ if __name__ == '__main__':
     # print(biogan.gen)
     biogan.logger.debug(f'Using device: {str(exec_device)}')
     biogan.logger.debug(f'Model initialized. Number of params = {biogan.nparams_hr}')
+
+    noise = biogan.generate_fixed_noise(batch_size=10)
+    assert torch.allclose(noise, biogan.generate_fixed_noise(batch_size=10))
+    exit(0)
 
     # Test visualization
     _x = next(iter(dataloader))
