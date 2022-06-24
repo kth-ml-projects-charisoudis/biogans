@@ -138,10 +138,11 @@ class GanEvaluator6Class(GanEvaluator):
 
     def evaluate(self, gen: nn.Module, metric_name: Optional[str] = None, show_progress: bool = True,
                  dataset=None, print_dict: bool = False) -> Dict[str, float]:
-        assert hasattr(gen, 'gens') and hasattr(self.dataset, 'datasets')
+        assert (hasattr(gen, 'gens') or hasattr(gen, 'get_gens')) and hasattr(self.dataset, 'datasets')
+        gens = gen.gens if hasattr(gen, 'gens') else gen.get_gens()
         dict_list = [
             super(GanEvaluator6Class, self).evaluate(gen_c, metric_name, show_progress, dataset_c, print_dict)
-            for gen_c, dataset_c in zip(gen.gens, self.dataset.datasets.values())
+            for gen_c, dataset_c in zip(gens, self.dataset.datasets.values())
         ]
         return {
             k: sum(d[k] for d in dict_list) / len(dict_list)

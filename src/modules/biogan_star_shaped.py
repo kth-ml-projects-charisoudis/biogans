@@ -347,5 +347,4 @@ if __name__ == '__main__':
     plt.imshow(biogan.visualize(dl=dataloader))
     plt.show()
     # biogan.gcapture(metrics=False, visualizations=False, in_parallel=False, show_progress=True)
-    assert hasattr(biogan.gen, 'gens')
     print(biogan.evaluate('fid'))

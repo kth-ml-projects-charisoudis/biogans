@@ -17,7 +17,7 @@ class DCGanSubGeneratorStarShaped(DCGanSubGenerator):
         return out
 
 
-class DCGanGeneratorStarShaped(nn.Module, BalancedFreezable):
+class DCGanGeneratorStarShaped(nn.Module, BalancedFreezable, object):
     """
     DCGanGeneratorStarShaped Class:
     Implements the DCGAN generator architecture with "Star-Shaped" convolutions. They all fall in the Noise-to-Image
@@ -62,14 +62,6 @@ class DCGanGeneratorStarShaped(nn.Module, BalancedFreezable):
         self.z_dim_red = int(self.z_dim * red_portion)
         self.z_dim_green = self.z_dim - self.z_dim_red
 
-    @property
-    def gens(self):
-        if self.__class__.SUB_GENS is None:
-            self.__class__.SUB_GENS = [DCGanSubGeneratorStarShaped(self, rank=i) for i in range(self.n_classes)]
-        else:
-            [sub_gen.reset() for sub_gen in self.__class__.SUB_GENS]
-        return self.__class__.SUB_GENS
-
     def forward(self, z: torch.Tensor, class_idx: int or None = None) -> torch.Tensor:
         """
         :param Tensor z:
@@ -102,6 +94,13 @@ class DCGanGeneratorStarShaped(nn.Module, BalancedFreezable):
         sd_keys = list(state_dict.keys())
         class_state_dict = OrderedDict({k_new: state_dict[k] for k, k_new in zip(sd_keys, self_keys)})
         self.load_state_dict(class_state_dict)
+
+    def get_gens(self):
+        if self.__class__.SUB_GENS is None:
+            self.__class__.SUB_GENS = [DCGanSubGeneratorStarShaped(self, rank=i) for i in range(self.n_classes)]
+        else:
+            [sub_gen.reset() for sub_gen in self.__class__.SUB_GENS]
+        return self.__class__.SUB_GENS
 
 
 if __name__ == '__main__':
