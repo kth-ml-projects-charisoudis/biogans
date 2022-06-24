@@ -1,10 +1,20 @@
+from collections import OrderedDict
 from typing import OrderedDict as OrderedDictT
 
 import torch
 from torch import nn
 
+from modules.generators.dcgan import DCGanSubGenerator
 from modules.partial.decoding import ExpandingBlockStarShaped
 from utils.ifaces import BalancedFreezable
+
+
+class DCGanSubGeneratorStarShaped(DCGanSubGenerator):
+    def peak(self) -> torch.Tensor:
+        out = self.GEN_FORWARDS[self.index][self.rank]
+        self.index += 1
+        # print(f'[SG{self.rank}][peak] out_shape={out.shape} | new_index={self.index}')
+        return out
 
 
 class DCGanGeneratorStarShaped(nn.Module, BalancedFreezable):
@@ -13,6 +23,7 @@ class DCGanGeneratorStarShaped(nn.Module, BalancedFreezable):
     Implements the DCGAN generator architecture with "Star-Shaped" convolutions. They all fall in the Noise-to-Image
     unconditional generation category.
     """
+    SUB_GENS = None
 
     def __init__(self, c_out: int = 2, z_dim: int = 100, n_classes: int = 6, c_hidden: int = 512,
                  red_portion: float = 0.5):
@@ -51,6 +62,14 @@ class DCGanGeneratorStarShaped(nn.Module, BalancedFreezable):
         self.z_dim_red = int(self.z_dim * red_portion)
         self.z_dim_green = self.z_dim - self.z_dim_red
 
+    @property
+    def gens(self):
+        if self.__class__.SUB_GENS is None:
+            self.__class__.SUB_GENS = [DCGanSubGeneratorStarShaped(self, rank=i) for i in range(self.n_classes)]
+        else:
+            [sub_gen.reset() for sub_gen in self.__class__.SUB_GENS]
+        return self.__class__.SUB_GENS
+
     def forward(self, z: torch.Tensor, class_idx: int or None = None) -> torch.Tensor:
         """
         :param Tensor z:
@@ -64,7 +83,7 @@ class DCGanGeneratorStarShaped(nn.Module, BalancedFreezable):
         if class_idx is None:
             y_green = [y_green] * self.n_classes
             for layer in self.gen_layers:
-                y_red, y_green = layer(y_red, y_green)
+                y_red, y_green = layer(y_red, y_green, class_idx=None)
             output = torch.stack([
                 torch.cat([y_red, y_green[i]], dim=1)
                 for i in range(self.n_classes)
@@ -79,9 +98,15 @@ class DCGanGeneratorStarShaped(nn.Module, BalancedFreezable):
         return torch.randn(batch_size, self.z_dim, device=device)
 
     def load_aosokin_state_dict(self, state_dict: OrderedDictT[str, torch.Tensor], class_idx: int = 0):
-        # self_keys = [k for k in self.state_dict().keys() if not k.endswith('num_batches_tracked')]
-        # sd_keys = [k for k in state_dict.keys() if k.startswith(f'main.{class_idx}')]
-        # class_state_dict = OrderedDict({k_new: state_dict[k] for k, k_new in zip(sd_keys, self_keys)})
-        # self.load_state_dict(class_state_dict)
-        # TODO
-        pass
+        self_keys = [k for k in self.state_dict().keys() if not k.endswith('num_batches_tracked')]
+        sd_keys = list(state_dict.keys())
+        class_state_dict = OrderedDict({k_new: state_dict[k] for k, k_new in zip(sd_keys, self_keys)})
+        self.load_state_dict(class_state_dict)
+
+
+if __name__ == '__main__':
+    gen = DCGanGeneratorStarShaped(c_out=2, z_dim=100, n_classes=6, c_hidden=512, red_portion=0.5)
+    # print(gen)
+    x = torch.rand(2, 100)
+    y = gen(x)
+    print(y.shape)

@@ -69,7 +69,7 @@ class ConvTranspose2dSeparable(nn.Module):
 
 class ConvTranspose2dStarShaped(nn.Module):
     def __init__(self, c_in: int, c_out: int, kernel_size: int, stride: int = 1, padding: int = 0, bias=True,
-                 red_portion=0.5, n_classes: int = 6):
+                 red_portion=0.5, n_classes: int = 6, use_norm: bool = False):
         """
         ConvTranspose2dSeparable class constructor.
         :param int c_in: see nn.ConvTranspose2d
@@ -81,16 +81,24 @@ class ConvTranspose2dStarShaped(nn.Module):
         :param float red_portion: portion of red channels (e.g. 0.5 for 2-channel outputs, or 0.166 for 7-channel outs)
         """
         super(ConvTranspose2dStarShaped, self).__init__()
+        #   - red channel
         self.c_in_red = int(c_in * red_portion)
         self.c_out_red = int(c_out * red_portion)
         self.conv_red = nn.ConvTranspose2d(self.c_in_red, self.c_out_red, kernel_size, stride, padding, bias=bias)
+        if use_norm:
+            self.bn_red = nn.BatchNorm2d(int(c_out * red_portion))
+        #   - green channels
         self.c_out_green = c_out - self.c_out_red
-
-        self.conv_green = nn.ModuleList()
-        for i_c in range(n_classes):
-            self.conv_green.append(
-                nn.ConvTranspose2d(c_in, self.c_out_green, kernel_size, stride, padding, bias=bias)
-            )
+        self.conv_green = nn.ModuleList([
+            nn.ConvTranspose2d(c_in, self.c_out_green, kernel_size, stride, padding, bias=bias)
+            for _ in range(n_classes)
+        ])
+        if use_norm:
+            self.bn_green = nn.ModuleList([
+                nn.BatchNorm2d(c_out - int(c_out * red_portion))
+                for _ in range(n_classes)
+            ])
+        self.use_norm = use_norm
         self.n_classes = n_classes
 
     def forward(self, x_red: Tensor, x_green: Tensor, class_idx: int or None = None) -> Tuple[Tensor, Tensor or list]:
@@ -99,13 +107,20 @@ class ConvTranspose2dStarShaped(nn.Module):
         :param Tensor x_green: image tensor of shape (n_classes, B, 1, H, W) if class_idx is None, else (B, 1, W, H)
         :param (optional) class_idx:
         """
+        # Upscale & Norm
         y_red = self.conv_red(x_red)
+        if self.use_norm:
+            y_red = self.bn_red(y_red)
         if class_idx is None:
             y_green = [None] * self.n_classes
             for class_idx in range(self.n_classes):
                 x_green_i = torch.cat([x_red, x_green[class_idx]], dim=1)
                 y_green[class_idx] = self.conv_green[class_idx](x_green_i)
+                if self.use_norm:
+                    y_green[class_idx] = self.bn_green[class_idx](y_green[class_idx])
         else:
             x_green_i = torch.cat([x_red, x_green], dim=1)
             y_green = self.conv_green[class_idx](x_green_i)
+            if self.use_norm:
+                y_green = self.bn_green[class_idx](y_green)
         return y_red, y_green

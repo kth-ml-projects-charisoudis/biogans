@@ -218,13 +218,8 @@ class ExpandingBlockStarShaped(nn.Module):
         c_out = c_in // 2 if c_out is None else c_out
 
         # Upscaling layer using transposed convolution
-        self.upscale = ConvTranspose2dStarShaped(c_in, c_out, kernel_size, stride=stride, padding=padding,
-                                                 bias=bias, red_portion=red_portion, n_classes=n_classes)
-        self.use_norm = use_norm
-        if use_norm:
-            self.bn_red = nn.BatchNorm2d(int(c_out * red_portion))
-            self.bn_green = nn.BatchNorm2d(c_out - int(c_out * red_portion))
-
+        self.upscale = ConvTranspose2dStarShaped(c_in, c_out, kernel_size, stride=stride, padding=padding, bias=bias,
+                                                 red_portion=red_portion, n_classes=n_classes, use_norm=use_norm)
         self.use_activation = activation is not None
         if self.use_activation:
             activations_switcher = {
@@ -245,20 +240,9 @@ class ExpandingBlockStarShaped(nn.Module):
         :param (optional) class_idx:
         :return: transformed image tensors of shape (N, cout_red, H*2, W*2) and (n_classes, N, cout_green, H*2, W*2)
         """
-        # Upscale current input
-        x_red, x_green = self.upscale(x_red, x_green, class_idx)
-        # Norm
-        if self.use_norm:
-            x_red = self.bn_red(x_red)
-            if class_idx is None:
-                x_green = [self.bn_green(x_green_i) for x_green_i in x_green]
+        # Upscale & normalize current input
+        x_red, x_green = self.upscale(x_red, x_green, class_idx=class_idx)
         # Activation
-        if self.activation:
-            x_red = self.bn_red(x_red)
-            if class_idx is None:
-                x_green = [self.bn_green(x_green_i) for x_green_i in x_green]
-
-        # Append skip connection (if one exists)
         if self.use_activation:
             x_red = self.activation(x_red)
             if class_idx is None:

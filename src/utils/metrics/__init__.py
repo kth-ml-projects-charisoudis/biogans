@@ -26,7 +26,8 @@ class GanEvaluator(object):
     def __init__(self, model_fs_folder_or_root: FilesystemFolder, gen_dataset: Dataset, n_samples: int = 1e4,
                  batch_size: int = 32, ssim_c_img: int = 3, device: torch.device or str = 'cpu',
                  target_index: Optional[int] = None, condition_indices: Optional[Union[int, tuple]] = None,
-                 z_dim: Optional[int] = None, f1_k: int = 3, gan_instance=None, c2st_epochs: int = 100):
+                 z_dim: Optional[int] = None, f1_k: int = 3, gan_instance=None, c2st_epochs: int = 100,
+                 is_final: bool = False):
         """
         GanEvaluator class constructor.
         :param (FilesystemFolder) model_fs_folder_or_root: absolute path to model checkpoints directory or
@@ -46,6 +47,7 @@ class GanEvaluator(object):
                                                             translation tasks). If set to None, the generator is fed
                                                             with random noise.
         :param (int) f1_k: `k` param of precision/recall metric (default is 3)
+        :param (bool) is_final: set this to True to also include final_calculators in the calculators dict
         """
         gen_dataset_underlying = gen_dataset.dataset if isinstance(gen_dataset, Subset) else gen_dataset
         if hasattr(gen_dataset_underlying, 'transforms'):
@@ -65,10 +67,14 @@ class GanEvaluator(object):
                      batch_size=batch_size, device=device),
             'ssim': SSIM(n_samples=n_samples, batch_size=batch_size, c_img=ssim_c_img, device=device),
             'ppl': PPL(model_fs_folder_or_root=model_fs_folder_or_root, n_samples=n_samples,
-                       batch_size=batch_size, device=device),
+                       batch_size=batch_size, device=device)
+        }
+        self.final_calculators = {  # run only on final evaluation
             'c2st': C2ST(model_fs_folder_or_root=model_fs_folder_or_root, n_samples=n_samples,
                          batch_size=batch_size, device=device, train_epochs=c2st_epochs, gan_instance=gan_instance),
         }
+        if is_final:
+            self.calculators.update(self.final_calculators)
         # Save args
         self.target_index = target_index
         self.condition_indices = condition_indices
