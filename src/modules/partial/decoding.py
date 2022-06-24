@@ -5,34 +5,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from modules.partial.encoding import Conv2dSeparable
-
-
-class ConvTranspose2dSeparable(nn.Module):
-    def __init__(self, c_in: int, c_out: int, kernel_size: int, stride: int = 1, padding: int = 0, bias=True,
-                 red_portion=0.5):
-        """
-        ConvTranspose2dSeparable class constructor.
-        :param int c_in: see nn.ConvTranspose2d
-        :param int c_out: see nn.ConvTranspose2d
-        :param int kernel_size: see nn.ConvTranspose2d
-        :param int stride: see nn.ConvTranspose2d
-        :param int padding: see nn.ConvTranspose2d
-        :param bool bias: see nn.ConvTranspose2d
-        :param float red_portion: portion of red channels (e.g. 0.5 for 2-channel outputs, or 0.166 for 7-channel outs)
-        """
-        super(ConvTranspose2dSeparable, self).__init__()
-        self.c_in_red = int(c_in * red_portion)
-        self.c_out_red = int(c_out * red_portion)
-        self.conv_red = nn.ConvTranspose2d(self.c_in_red, self.c_out_red, kernel_size, stride, padding, bias=bias)
-        self.c_out_green = c_out - self.c_out_red
-        self.conv_green = nn.ConvTranspose2d(c_in, self.c_out_green, kernel_size, stride, padding, bias=bias)
-
-    def forward(self, x: torch.Tensor):
-        x_red = x[:, :self.c_in_red, :, :]
-        y_red = self.conv_red(x_red)
-        y_green = self.conv_green(x)
-        return torch.cat((y_red, y_green), dim=1)
+from modules.partial.conv_variants import Conv2dSeparable, ConvTranspose2dSeparable, ConvTranspose2dStarShaped
 
 
 class ExpandingBlock(nn.Module):
@@ -216,3 +189,78 @@ class ChannelsProjectLayer(nn.Module):
         :return: transformed image tensor of shape (N, C_out, H, W)
         """
         return self.feature_map_block(x)
+
+
+class ExpandingBlockStarShaped(nn.Module):
+    """
+    ExpandingBlockStarShaped Class:
+    Performs a convolutional transpose operation in order to up-sample, with an optional norm and non-linearity
+    activation functions, using the "Star-Shaped" convolutions.
+    """
+
+    def __init__(self, c_in: int, use_norm: bool = True, kernel_size: int = 3, activation: Optional[str] = 'relu',
+                 n_classes: int = 6, stride: int = 2, padding: int = 1, c_out: Optional[int] = None,
+                 bias: bool = True, red_portion: float = 0.5):
+        """
+        ExpandingBlock class constructor.
+        :param int c_in: number of input channels
+        :param bool use_norm: indicates if InstanceNormalization2d is applied or not after Conv2d layer
+        :param int kernel_size: filter (kernel) size of torch.nn.Conv2d
+        :param str activation: type of activation function used (supported: 'relu', 'lrelu')
+        :param int n_classes: number of classes for Star-Shaped convolutions
+        :param int stride: stride of torch.nn.ConvTranspose2d (defaults to 2 for our needs)
+        :param int padding: padding of torch.nn.ConvTranspose2d
+        :param str c_out: number of output channels
+        :param bool bias: see nn.Conv{Transpose}2d
+        :param (optional) red_portion: if set, Separable architecture is employed instead of the original one
+        """
+        super(ExpandingBlockStarShaped, self).__init__()
+        c_out = c_in // 2 if c_out is None else c_out
+
+        # Upscaling layer using transposed convolution
+        self.upscale = ConvTranspose2dStarShaped(c_in, c_out, kernel_size, stride=stride, padding=padding,
+                                                 bias=bias, red_portion=red_portion, n_classes=n_classes)
+        self.use_norm = use_norm
+        if use_norm:
+            self.bn_red = nn.BatchNorm2d(int(c_out * red_portion))
+            self.bn_green = nn.BatchNorm2d(c_out - int(c_out * red_portion))
+
+        self.use_activation = activation is not None
+        if self.use_activation:
+            activations_switcher = {
+                'relu': nn.ReLU(inplace=True),
+                'lrelu': nn.LeakyReLU(0.2, inplace=True),
+                'tanh': nn.Tanh(),
+                'sigmoid': nn.Sigmoid(),
+            }
+            self.activation = activations_switcher[activation]
+        self.c_out = c_out
+        self.n_classes = n_classes
+
+    def forward(self, x_red: Tensor, x_green: Tensor, class_idx: int or None = None) -> Tensor:
+        """
+        Function for completing a forward pass of ExpandingBlockStarShaped:
+        :param Tensor x_red: green input(s) of shape (B, 1, W, H)
+        :param Tensor x_green: image tensor of shape (n_classes, B, 1, H, W) if class_idx is None, else (B, 1, W, H)
+        :param (optional) class_idx:
+        :return: transformed image tensors of shape (N, cout_red, H*2, W*2) and (n_classes, N, cout_green, H*2, W*2)
+        """
+        # Upscale current input
+        x_red, x_green = self.upscale(x_red, x_green, class_idx)
+        # Norm
+        if self.use_norm:
+            x_red = self.bn_red(x_red)
+            if class_idx is None:
+                x_green = [self.bn_green(x_green_i) for x_green_i in x_green]
+        # Activation
+        if self.activation:
+            x_red = self.bn_red(x_red)
+            if class_idx is None:
+                x_green = [self.bn_green(x_green_i) for x_green_i in x_green]
+
+        # Append skip connection (if one exists)
+        if self.use_activation:
+            x_red = self.activation(x_red)
+            if class_idx is None:
+                x_green = [self.activation(x_green_i) for x_green_i in x_green]
+        return x_red, x_green

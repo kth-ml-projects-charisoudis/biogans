@@ -4,35 +4,9 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+from modules.partial.conv_variants import Conv2dSeparable
 from utils.pytorch import get_total_params
 from utils.string import to_human_readable
-
-
-class Conv2dSeparable(nn.Module):
-    def __init__(self, c_in: int, c_out: int, kernel_size: int, stride: int = 1, padding: int = 0, bias=True,
-                 red_portion=0.5):
-        """
-        ConvTranspose2dSeparable class constructor.
-        :param int c_in: see nn.ConvTranspose2d
-        :param int c_out: see nn.ConvTranspose2d
-        :param int kernel_size: see nn.ConvTranspose2d
-        :param int stride: see nn.ConvTranspose2d
-        :param int padding: see nn.ConvTranspose2d
-        :param bool bias: see nn.ConvTranspose2d
-        :param float red_portion: portion of red channels (e.g. 0.5 for 2-channel outputs, or 0.166 for 7-channel outs)
-        """
-        super(Conv2dSeparable, self).__init__()
-        self.c_in_red = int(c_in * red_portion)
-        self.c_out_red = int(c_out * red_portion)
-        self.conv_red = nn.Conv2d(self.c_in_red, self.c_out_red, kernel_size, stride, padding, bias=bias)
-        self.c_out_green = c_out - self.c_out_red
-        self.conv_green = nn.Conv2d(c_in, self.c_out_green, kernel_size, stride, padding, bias=bias)
-
-    def forward(self, x: torch.Tensor):
-        x_red = x[:, :self.c_in_red, :, :]
-        y_red = self.conv_red(x_red)
-        y_green = self.conv_green(x)
-        return torch.cat((y_red, y_green), dim=1)
 
 
 class ContractingBlock(nn.Module):
