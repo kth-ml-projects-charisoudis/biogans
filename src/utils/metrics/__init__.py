@@ -89,7 +89,7 @@ class GanEvaluator(object):
     @gan_instance.setter
     def gan_instance(self, gan_instance: IGanGModule) -> None:
         self._gan_instance = gan_instance
-        self.calculators['c2st'].gan = gan_instance
+        self.final_calculators['c2st'].gan = gan_instance
 
     def evaluate(self, gen: nn.Module, metric_name: Optional[str] = None, show_progress: bool = True,
                  dataset=None, print_dict: bool = False) -> Dict[str, float]:
