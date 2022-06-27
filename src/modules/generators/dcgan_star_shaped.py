@@ -16,6 +16,9 @@ class DCGanSubGeneratorStarShaped(DCGanSubGenerator):
         # print(f'[SG{self.rank}][peak] out_shape={out.shape} | new_index={self.index}')
         return out
 
+    def get_random_z(self, *args, **kwargs):
+        return self.gen.get_random_z(*args, **kwargs)
+
 
 class DCGanGeneratorStarShaped(nn.Module, BalancedFreezable, object):
     """
