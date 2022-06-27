@@ -111,10 +111,8 @@ class C2ST(nn.Module):
             num_batches = 0
             for data_real in real_test_dl:
                 data_fake = gen(gen.get_random_z(batch_size=data_real.shape[0], device=self.device))
-                data_fake.detach_()
-                data_real.detach_()
-                score_var = disc.get_loss_both(data_real, data_fake).mean()
-                score += score_var
+                score_var = disc.get_loss_both(data_real.to(self.device).detach(), data_fake.to(self.device).detach()).mean()
+                score += score_var.item()
                 num_batches += 1
 
             # Return
