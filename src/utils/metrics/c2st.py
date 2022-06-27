@@ -117,7 +117,7 @@ class C2ST(nn.Module):
 
             # Return
             gen.train()
-            print(f'result = {(score / num_batches).item():.3f}')
+            print(f'result = {(score / num_batches):.3f}')
             return score / num_batches
 
         # # Create dataset/dataloader
