@@ -112,13 +112,13 @@ class C2ST(nn.Module):
             for data_real in real_test_dl:
                 data_fake = gen(gen.get_random_z(batch_size=data_real.shape[0], device=self.device))
                 score_var = disc.get_loss_both(data_real.to(self.device).detach(), data_fake.to(self.device).detach()).mean()
-                score += score_var.item()
+                score += score_var
                 num_batches += 1
 
             # Return
             gen.train()
-            print(f'result = {(score / num_batches):.3f}')
-            return score / num_batches
+            print(f'result = {(score.data / num_batches).item():.3f}')
+            return score.data / num_batches
 
         # # Create dataset/dataloader
         # if self.real_vs_real:
