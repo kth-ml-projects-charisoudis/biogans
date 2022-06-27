@@ -99,7 +99,7 @@ class C2ST(nn.Module):
             for e in pbar:
                 for real, (fake,) in zip(real_dl, fake_dl):
                     disc_opt.zero_grad()  # Zero out discriminator gradient (before backprop)
-                    disc_loss = disc.get_loss_both(real=real.detach(), fake=fake.detach()).mean()
+                    disc_loss = disc.get_loss_both(real=real.to(self.device).detach(), fake=fake.to(self.device).detach()).mean()
                     disc_loss.backward()  # Update discriminator gradients
                     disc_opt.step()  # Update discriminator weights
                     disc_loss_avg.append(disc_loss.item())
