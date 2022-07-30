@@ -5,7 +5,6 @@ from typing import Optional, Sequence, Tuple, Union
 import click
 import numpy as np
 import torch
-import wget
 from PIL.Image import Image
 from matplotlib import pyplot as plt
 from torch import nn, Tensor
@@ -18,7 +17,7 @@ from modules.generators.dcgan_star_shaped import DCGanGeneratorStarShaped
 from modules.ifaces import IGanGModule
 from utils.ifaces import FilesystemFolder
 from utils.metrics import GanEvaluator, GanEvaluator6Class
-from utils.plot import plot_grid, create_img_grid_6class
+from utils.plot import plot_grid, create_img_grid_6class, create_img_grid_6class_joint
 from utils.pytorch import invert_transforms, ToTensorOrPass
 from utils.train import get_optimizer, weights_init_naive
 
@@ -68,29 +67,30 @@ class BioGanStarShaped(nn.Module, IGanGModule):
 
         # Load checkpoint from Google Drive
         self.other_state_dicts = {}
-        if chkpt_step is not None and chkpt_step.startswith('aosokin') or \
-                chkpt_epoch is not None and chkpt_epoch.startswith('aosokin'):
-            # load aosokin checkpoint in generator
-            _, aosokin_path = chkpt_step.split(':') if chkpt_step is not None else chkpt_epoch.split(':')
-            if os.path.basename(aosokin_path) == 'auto':
-                aosokin_path = aosokin_path.replace(
-                    '/auto',
-                    f'/size-48-80_6class_{config_id.replace("wgan-gp", "wgangp")}-adam/netG_iter_50000.pth'
-                )
-                if not os.path.exists(aosokin_path):
-                    # try downloading file
-                    p = pathlib.Path(aosokin_path)
-                    p.parent.mkdir(parents=True, exist_ok=True)
-                    wget.download(
-                        f'http://www.di.ens.fr/sierra/research/biogans/models/{p.relative_to(p.parent.parent)}',
-                        out=str(p.parent.absolute()))
-            self.logger.debug(f'Loading AOSOKIN checkpoint: {aosokin_path}')
-            self.gen.load_aosokin_state_dict(torch.load(aosokin_path, map_location='cpu'))
-            # TODO: what should be loaded at the Discriminator after this?
-            chkpt_epoch = 3200
-        elif chkpt_epoch is not None:
+        # if chkpt_step is not None and type(chkpt_step) == str and chkpt_step.startswith('aosokin') or \
+        #         (chkpt_epoch is not None and type(chkpt_step) == str and chkpt_epoch.startswith('aosokin')):
+        #     # load aosokin checkpoint in generator
+        #     _, aosokin_path = chkpt_step.split(':') if chkpt_step is not None else chkpt_epoch.split(':')
+        #     if os.path.basename(aosokin_path) == 'auto':
+        #         aosokin_path = aosokin_path.replace(
+        #             '/auto',
+        #             f'/size-48-80_6class_{config_id.replace("wgan-gp", "wgangp")}-adam/netG_iter_50000.pth'
+        #         )
+        #         if not os.path.exists(aosokin_path):
+        #             # try downloading file
+        #             p = pathlib.Path(aosokin_path)
+        #             p.parent.mkdir(parents=True, exist_ok=True)
+        #             wget.download(
+        #                 f'http://www.di.ens.fr/sierra/research/biogans/models/{p.relative_to(p.parent.parent)}',
+        #                 out=str(p.parent.absolute()))
+        #     self.logger.debug(f'Loading AOSOKIN checkpoint: {aosokin_path}')
+        #     self.gen.load_aosokin_state_dict(torch.load(aosokin_path, map_location='cpu'))
+        #     # TODO: what should be loaded at the Discriminator after this?
+        #     chkpt_epoch = 3200
+        if chkpt_epoch is not None:
             try:
-                chkpt_filepath = self.fetch_checkpoint(epoch_or_id=chkpt_epoch, step=chkpt_step)
+                # chkpt_filepath = self.fetch_checkpoint(epoch_or_id=chkpt_epoch, step=chkpt_step)
+                chkpt_filepath = '/home/achariso/PycharmProjects/kth-ml-course-projects/biogans/.gdrive_personal/Models/model_name=bioganjoint6class_sep/Checkpoints/epoch=1703/0000253800.pth'
                 self.logger.debug(f'Loading checkpoint file: {chkpt_filepath}')
                 _state_dict = torch.load(chkpt_filepath, map_location='cpu')
                 self.load_state_dict(_state_dict)
@@ -257,7 +257,7 @@ class BioGanStarShaped(nn.Module, IGanGModule):
     def visualize_indices(self, indices: Union[int, tuple, Sequence]) -> Image:
         raise NotImplementedError('Cannot really implement reproducibility in Noise-to-Image context.')
 
-    def visualize(self, reproducible: bool = False, dl=None, save_path=None) -> Image:
+    def visualize2(self, reproducible: bool = False, dl=None, save_path=None) -> Image:
         # Get first & last sample from saved images in self
         if self.x is None or self.g_out is None:
             assert dl is not None
@@ -279,6 +279,29 @@ class BioGanStarShaped(nn.Module, IGanGModule):
 
         # Plot
         return plot_grid(grid=grid, figsize=(14, 2),
+                         footnote_l=f'epoch={str(self.epoch).zfill(3)} | step={str(self.step).zfill(10)}',
+                         footnote_r=f'gen_loss={"{0:0.3f}".format(round(np.mean(self.gen_losses).item(), 3))}, '
+                                    f'disc_loss={"{0:0.3f}".format(round(np.mean(self.disc_losses).item(), 3))}',
+                         save_path=save_path)
+
+    def visualize(self, reproducible: bool = False, dl=None, save_path=None) -> Image:
+        # Get first & last sample from saved images in self
+        if self.x is None or self.g_out is None:
+            assert dl is not None
+            self.x = next(iter(dl)).detach().cpu()
+            with torch.no_grad():
+                self.g_out = self.gen(self.gen.get_random_z(batch_size=self.x.shape[0], device=self.device)).cpu()
+
+        x_0 = self.inv_transforms(self.x[0])
+        g_out_0 = self.inv_transforms(self.g_out[0])
+        x__1 = self.inv_transforms(self.x[-1])
+        g_out__1 = self.inv_transforms(self.g_out[-1])
+
+        # Concat images to a 3x7 grid (first row has real sample, next 2 are 2 separate generations)
+        grid = create_img_grid_6class_joint(x_0, g_out_0, g_out__1)
+
+        # Plot
+        return plot_grid(grid=grid, figsize=(10, 2),
                          footnote_l=f'epoch={str(self.epoch).zfill(3)} | step={str(self.step).zfill(10)}',
                          footnote_r=f'gen_loss={"{0:0.3f}".format(round(np.mean(self.gen_losses).item(), 3))}, '
                                     f'disc_loss={"{0:0.3f}".format(round(np.mean(self.disc_losses).item(), 3))}',
@@ -311,7 +334,7 @@ if __name__ == '__main__':
     #     > len(dataloader) = <number of batches>
     #     > len(dataloader.dataset) = <number of total dataset items>
     dataloader = LINDataloader6Class(dataset_fs_folder_or_root=_datasets_groot, train_not_test=True,
-                                     batch_size=2)
+                                     batch_size=6)
     dataset = dataloader.dataset
 
     ###################################
@@ -321,8 +344,8 @@ if __name__ == '__main__':
     evaluator = GanEvaluator6Class(model_fs_folder_or_root=_models_groot, gen_dataset=dataset, z_dim=-1,
                                    device=exec_device, n_samples=16, batch_size=8, f1_k=2, ssim_c_img=2)
     #   - initialize model
-    _chkpt_step = f'aosokin:{PROJECT_DIR_PATH}/aosokin_checkpoints/auto'
-    # _chkpt_step = None
+    # _chkpt_step = f'aosokin:{PROJECT_DIR_PATH}/aosokin_checkpoints/auto'
+    _chkpt_step = 'latest'
     # try:
     #     if chkpt_step == 'latest':
     #         _chkpt_step = chkpt_step
@@ -333,7 +356,7 @@ if __name__ == '__main__':
     # except NameError:
     #     _chkpt_step = None
     biogan = BioGanStarShaped(model_fs_folder_or_root=_models_groot, config_id='wgan-gp-star-shaped',
-                              dataset_len=len(dataset), chkpt_epoch=_chkpt_step, evaluator=evaluator,
+                              dataset_len=len(dataset), chkpt_epoch=1703, chkpt_step=253800, evaluator=evaluator,
                               device=exec_device, log_level='debug', gen_transforms=dataloader.transforms)
     # print(biogan.gen)
     biogan.logger.debug(f'Using device: {str(exec_device)}')
@@ -344,7 +367,8 @@ if __name__ == '__main__':
     print(_x.shape)
     _disc_loss, _gen_loss = biogan(_x)
     print('disc_loss', _disc_loss, 'gen_loss', _gen_loss)
-    plt.imshow(biogan.visualize(dl=dataloader))
+    visualization_img = biogan.visualize(dl=dataloader, save_path='sample.pdf')
+    plt.imshow(visualization_img)
     plt.show()
     # biogan.gcapture(metrics=False, visualizations=False, in_parallel=False, show_progress=True)
-    print(biogan.evaluate('fid'))
+    # print(biogan.evaluate('fid'))

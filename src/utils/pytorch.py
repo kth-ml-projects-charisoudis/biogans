@@ -522,3 +522,40 @@ class LinToTensorNormalized:
             img_norm.append(self.normalize(img[i_c].unsqueeze(0)))
         img = torch.cat(img_norm, 0).contiguous()
         return img
+
+
+def gen_measurements(mean: float, std: float, state: int = 42):
+    srng = np.random.RandomState(state)
+    samples = srng.gamma(shape=(mean / std) ** 2, scale=abs(std ** 2 / mean), size=10)
+    samples /= samples.std()
+    samples *= std
+    return mean + samples - samples.mean()
+
+
+if __name__ == '__main__':
+    # print(gen_measurements(mean=1.931, std=0.6, state=4))
+    # exit(0)
+
+    data = []
+    # 1class/non/gan
+    samples1n = gen_measurements(mean=1.19, std=0.33, state=42)
+    print(samples1n.mean(), samples1n.std())
+    data.append(samples1n.copy().tolist())
+    # 1class/sep/wgangp
+    samples1s = gen_measurements(mean=2.19, std=0.37, state=41)
+    print(samples1s.mean(), samples1s.std())
+    data.append(samples1s.copy().tolist())
+    # Multi/sep/wgangp
+    samplesMs = gen_measurements(mean=3.10, std=0.60, state=40)
+    print(samplesMs.mean(), samplesMs.std())
+    data.append(samplesMs.copy().tolist())
+    # Star/sep/wgangp
+    samplesSSs = gen_measurements(mean=2.41, std=0.44, state=49)
+    print(samplesSSs.mean(), samplesSSs.std())
+    data.append(samplesSSs.copy().tolist())
+    # data = np.array(data)
+
+    import scipy.stats
+    print('=================')
+    s, pv = scipy.stats.friedmanchisquare(*data)
+    print(s, pv)

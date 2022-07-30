@@ -87,6 +87,7 @@ class C2ST(nn.Module):
 
             # Create the Discriminator instance
             disc_conf = self.gan._configuration['disc']
+            disc_conf
             if 'c_in' not in disc_conf.keys():
                 disc_conf['c_in'] = 2
             disc = DCGanDiscriminator(**disc_conf)
